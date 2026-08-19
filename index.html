@@ -1,0 +1,1969 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="Kowalzki Studio" />
+    <title>Kowalzki Studio · Cloud + Offline</title>
+
+    <!-- PWA Manifest -->
+    <link rel="manifest" href="manifest.json" />
+    <link rel="apple-touch-icon" href="icon-192.png" />
+
+    <!-- Firebase SDKs -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js">
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js">
+    </script>
+
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css" />
+
+    <style>
+        /* ===== RESET & BASE ===== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', system-ui, -apple-system, sans-serif;
+        }
+        body {
+            background: #0b0d15;
+            color: #e3e6f0;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            padding: 16px;
+        }
+        .app {
+            max-width: 1440px;
+            width: 100%;
+        }
+
+        /* ===== HEADER ===== */
+        .studio-header {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            border-bottom: 1px solid #2a2d3a;
+            padding-bottom: 12px;
+        }
+        .studio-header .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .studio-header .brand img {
+            height: 40px;
+            border-radius: 8px;
+        }
+        .studio-header h1 {
+            font-size: 1.3rem;
+            background: linear-gradient(135deg, #b388ff, #82b1ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .studio-header .sub {
+            color: #8892b0;
+            font-size: 0.7rem;
+            margin-top: 2px;
+        }
+
+        /* ===== SYNC BAR ===== */
+        .sync-bar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #0f131e;
+            border-radius: 30px;
+            padding: 8px 18px;
+            margin-bottom: 16px;
+            border: 1px solid #272d41;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        .sync-bar .status {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.75rem;
+        }
+        .sync-bar .status .dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .dot.online {
+            background: #6fcf97;
+        }
+        .dot.offline {
+            background: #f2c94a;
+        }
+        .dot.syncing {
+            background: #b388ff;
+            animation: pulse 1s infinite;
+        }
+        .dot.error {
+            background: #eb5757;
+        }
+        @keyframes pulse {
+            0%,
+            100% {
+                opacity: 1;
+            }
+            50% {
+                opacity: 0.3;
+            }
+        }
+        .sync-bar .actions {
+            display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
+        }
+        .sync-bar .actions button {
+            background: transparent;
+            border: 1px solid #3d445e;
+            color: #c8d0ec;
+            padding: 4px 12px;
+            border-radius: 30px;
+            font-size: 0.65rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .sync-bar .actions button:hover {
+            border-color: #b388ff;
+            color: #b388ff;
+        }
+
+        /* ===== MENU ===== */
+        .menu-nav {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 6px;
+            background: #141824;
+            padding: 6px 12px;
+            border-radius: 40px;
+            border: 1px solid #2a2f42;
+        }
+        .menu-nav button {
+            background: transparent;
+            border: none;
+            color: #b0b8d1;
+            font-size: 0.65rem;
+            font-weight: 500;
+            padding: 4px 10px;
+            border-radius: 30px;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .menu-nav button:hover {
+            color: #b388ff;
+            background: #1e2337;
+        }
+        .menu-nav button.active {
+            color: #b388ff;
+            background: #1e1a35;
+            box-shadow: 0 0 12px rgba(179, 136, 255, 0.15);
+        }
+
+        /* ===== PAGES ===== */
+        .page {
+            display: none;
+            margin-top: 8px;
+        }
+        .page.active {
+            display: block;
+        }
+
+        /* ===== CARDS ===== */
+        .card {
+            background: #11151f;
+            border-radius: 20px;
+            padding: 18px 20px;
+            border: 1px solid #262b3b;
+            box-shadow: 0 10px 25px -8px rgba(0, 0, 0, 0.6);
+            margin-bottom: 18px;
+        }
+        .card-title {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: #aab2d1;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            border-bottom: 1px solid #202533;
+            padding-bottom: 10px;
+            margin-bottom: 14px;
+        }
+        .card-title i {
+            color: #b388ff;
+            width: 20px;
+        }
+
+        /* ===== GRIDS ===== */
+        .grid-2 {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 18px;
+        }
+        .grid-3 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 16px;
+        }
+        .grid-4 {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 14px;
+        }
+        @media (max-width: 900px) {
+            .grid-2,
+            .grid-3,
+            .grid-4 {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* ===== INPUTS ===== */
+        .input-group {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin-bottom: 10px;
+        }
+        .input-group label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            color: #7f89aa;
+            font-weight: 600;
+            letter-spacing: 0.3px;
+        }
+        .input-group input,
+        .input-group select,
+        .input-group textarea {
+            background: #0f131e;
+            border: 1px solid #272d41;
+            border-radius: 12px;
+            padding: 10px 14px;
+            color: #eef2ff;
+            font-size: 0.85rem;
+            outline: none;
+            transition: 0.2s;
+            width: 100%;
+        }
+        .input-group input:focus,
+        .input-group select:focus {
+            border-color: #b388ff;
+            box-shadow: 0 0 0 3px rgba(179, 136, 255, 0.15);
+        }
+
+        /* ===== BUTTONS ===== */
+        .btn-primary {
+            background: #7c5cfc;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 40px;
+            font-weight: 600;
+            color: white;
+            cursor: pointer;
+            transition: 0.2s;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            border: 1px solid #8f72ff;
+            font-size: 0.8rem;
+        }
+        .btn-primary:hover {
+            background: #6b4ae8;
+            transform: scale(0.98);
+            box-shadow: 0 0 18px #7c5cfc55;
+        }
+        .btn-primary.green {
+            background: #2d7a4a;
+            border-color: #3a9d5e;
+        }
+        .btn-primary.green:hover {
+            background: #1e5f38;
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #3d445e;
+            color: #c8d0ec;
+            padding: 8px 14px;
+            border-radius: 30px;
+            font-weight: 500;
+            font-size: 0.7rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-outline:hover {
+            border-color: #b388ff;
+            color: #b388ff;
+        }
+        .btn-danger {
+            background: transparent;
+            border: 1px solid #7f4b6a;
+            color: #e08ab0;
+            padding: 4px 12px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 0.7rem;
+        }
+        .btn-danger:hover {
+            background: #3d1f2e;
+        }
+
+        /* ===== BADGES ===== */
+        .badge {
+            background: #1a1f2e;
+            padding: 4px 12px;
+            border-radius: 30px;
+            font-size: 0.65rem;
+            border: 1px solid #2c3249;
+            display: inline-block;
+        }
+        .badge-success {
+            border-color: #6fcf97;
+            color: #6fcf97;
+        }
+        .badge-warning {
+            border-color: #f2c94a;
+            color: #f2c94a;
+        }
+        .badge-danger {
+            border-color: #eb5757;
+            color: #eb5757;
+        }
+
+        /* ===== UTILITY ===== */
+        .flex {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+        .space-between {
+            justify-content: space-between;
+        }
+        .mt-2 {
+            margin-top: 14px;
+        }
+        .mb-1 {
+            margin-bottom: 6px;
+        }
+        .w-full {
+            width: 100%;
+        }
+        .text-center {
+            text-align: center;
+        }
+        .text-muted {
+            color: #8892b0;
+            font-size: 0.8rem;
+        }
+
+        /* ===== TABLES ===== */
+        .table-wrap {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.75rem;
+        }
+        th {
+            text-align: left;
+            padding: 8px 6px;
+            color: #8892b0;
+            font-weight: 500;
+            border-bottom: 1px solid #262b3d;
+        }
+        td {
+            padding: 8px 6px;
+            border-bottom: 1px solid #1d2235;
+        }
+        tr:hover td {
+            background: #141a2a;
+        }
+
+        /* ===== STOCK ITEMS ===== */
+        .stock-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 8px 0;
+            border-bottom: 1px solid #1d2235;
+            align-items: center;
+            font-size: 0.8rem;
+        }
+
+        /* ===== CALENDAR ===== */
+        .cal-grid {
+            display: grid;
+            grid-template-columns: repeat(7, 1fr);
+            gap: 4px;
+            text-align: center;
+        }
+        .cal-grid .day {
+            padding: 8px 0;
+            border-radius: 8px;
+            background: #0c0f19;
+            font-size: 0.75rem;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .cal-grid .day:hover {
+            background: #1e2337;
+        }
+        .cal-grid .day.today {
+            background: #2a1f4a;
+            border: 1px solid #b388ff;
+        }
+        .cal-grid .day.event {
+            background: #1e2a3a;
+            color: #b388ff;
+        }
+        .cal-grid .day.empty {
+            background: transparent;
+            cursor: default;
+        }
+        .cal-grid .day-header {
+            background: transparent;
+            color: #7f89aa;
+            font-size: 0.6rem;
+            padding: 4px 0;
+        }
+
+        /* ===== STATS ===== */
+        .stat-number {
+            font-size: 1.4rem;
+            font-weight: 700;
+        }
+        .stat-label {
+            color: #8892b0;
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.3px;
+        }
+        .stat-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #1d2235;
+            font-size: 0.8rem;
+        }
+        .stat-item:last-child {
+            border-bottom: none;
+        }
+
+        /* ===== CALCULATOR ===== */
+        .calc-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px 14px;
+        }
+        @media (max-width: 600px) {
+            .calc-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .results-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 4px 16px;
+        }
+        .result-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 6px 0;
+            border-bottom: 1px solid #1d2235;
+            font-size: 0.8rem;
+        }
+        .result-item .label {
+            color: #8892b0;
+        }
+        .result-item .value {
+            font-weight: 600;
+        }
+        .result-item.highlight .value {
+            color: #b388ff;
+            font-weight: 700;
+        }
+        @media (max-width: 600px) {
+            .results-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        .badge-option {
+            background: #1a1f2e;
+            padding: 5px 14px;
+            border-radius: 30px;
+            font-size: 0.65rem;
+            font-weight: 600;
+            color: #b0bbd9;
+            border: 1px solid #2c3249;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .badge-option:hover {
+            border-color: #b388ff;
+            color: #b388ff;
+        }
+        .badge-option.active {
+            border-color: #b388ff;
+            color: #b388ff;
+            background: #1d1a2e;
+        }
+        .badge-option.premium {
+            border-color: #b388ff;
+            color: #b388ff;
+            background: #1d1a2e;
+        }
+
+        .filament-stock {
+            background: #0d111d;
+            border-radius: 18px;
+            padding: 10px 14px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-top: 10px;
+            border-left: 4px solid #b388ff;
+            font-size: 0.8rem;
+        }
+        .tip-box {
+            background: #1c1f31;
+            border-radius: 30px;
+            padding: 6px 14px;
+            font-size: 0.7rem;
+            color: #a9b5d6;
+            border: 1px solid #2c324b;
+            margin-top: 10px;
+        }
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .invoice-preview {
+            background: #0c0f19;
+            border-radius: 16px;
+            padding: 16px;
+            border: 1px solid #262b3d;
+        }
+        .invoice-preview .header {
+            border-bottom: 2px solid #b388ff;
+            padding-bottom: 10px;
+            margin-bottom: 12px;
+        }
+        .invoice-preview .row {
+            display: flex;
+            justify-content: space-between;
+            padding: 4px 0;
+            font-size: 0.8rem;
+        }
+
+        #fileInput {
+            display: none;
+        }
+
+        @media (max-width: 600px) {
+            .menu-nav button {
+                font-size: 0.55rem;
+                padding: 3px 6px;
+            }
+            .studio-header .brand img {
+                height: 30px;
+            }
+            .studio-header h1 {
+                font-size: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app">
+
+        <!-- ===== HEADER ===== -->
+        <div class="studio-header">
+            <div class="brand">
+                <img src="logo.png" alt="Kowalzki Studio" id="appLogo" onerror="this.style.display='none'" />
+                <div>
+                    <h1>KOWALZKI STUDIO</h1>
+                    <div class="sub"><i class="fas fa-cube" style="margin-right:4px;"></i> 3D PRINTING · PHILIPPINES · CLOUD SYNC</div>
+                </div>
+            </div>
+            <div class="menu-nav" id="menuNav">
+                <button class="active" data-page="calc">Calc</button>
+                <button data-page="inv">Inv</button>
+                <button data-page="customers">Customers</button>
+                <button data-page="invoice">Invoice</button>
+                <button data-page="calendar">Calendar</button>
+                <button data-page="dash">Dash</button>
+                <button data-page="history">History</button>
+                <button data-page="payments">Payments</button>
+                <button data-page="reports">Reports</button>
+                <button data-page="account">Account</button>
+            </div>
+        </div>
+
+        <!-- ===== SYNC BAR ===== -->
+        <div class="sync-bar" id="syncBar">
+            <div class="status">
+                <span class="dot" id="syncDot"></span>
+                <span id="syncStatus">Checking connection...</span>
+                <span style="font-size:0.6rem; color:#8892b0;" id="syncLastSync"></span>
+            </div>
+            <div class="actions">
+                <button id="syncNowBtn"><i class="fas fa-sync"></i> Sync</button>
+                <button id="exportJsonBtn"><i class="fas fa-download"></i> Export</button>
+                <button id="importJsonBtn"><i class="fas fa-upload"></i> Import</button>
+                <input type="file" id="fileInput" accept=".json" />
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PAGE: CALCULATOR -->
+        <!-- ============================================================ -->
+        <div class="page active" id="page-calc">
+            <div class="grid-2">
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-calculator"></i> Calculator</div>
+                        <div class="calc-grid">
+                            <div class="input-group"><label>JOB NAME</label><input type="text" id="jobName" value="Dragon V2" /></div>
+                            <div class="input-group"><label>MATERIAL COST (PER GRAM)</label><input type="number" id="materialCost" value="1.00" step="0.01" /></div>
+                            <div class="input-group"><label>PRINT TIME (MINUTES)</label><input type="number" id="printTime" value="510" step="1" /></div>
+                            <div class="input-group"><label>MACHINE DEP (P/MIN)</label><input type="number" id="machineDep" value="0.25" step="0.01" /></div>
+                            <div class="input-group"><label>OVERHEAD (P)</label><input type="number" id="overhead" value="80" /></div>
+                            <div class="input-group"><label>DESIRED PROFIT MARGIN (%)</label><input type="number" id="profitMargin" value="40" /></div>
+                        </div>
+                        <div class="grid-2" style="gap:10px; margin-top:6px;">
+                            <div class="input-group"><label>DEDUCT FROM FILAMENT</label><select id="filamentSelect"><option value="">— Select —</option></select></div>
+                            <div class="input-group"><label>CUSTOMER</label><select id="customerSelect"><option>Walk-in</option></select></div>
+                        </div>
+                        <div class="flex" style="margin:10px 0; gap:8px;">
+                            <button class="btn-primary" id="calculateBtn"><i class="fas fa-bolt"></i> CALCULATE</button>
+                            <button class="btn-primary green" id="printDeductBtn"><i class="fas fa-print"></i> PRINT &amp; DEDUCT</button>
+                            <button class="btn-outline" id="resetBtn"><i class="fas fa-undo"></i> RESET</button>
+                        </div>
+                        <div style="display:flex; flex-wrap:wrap; gap:6px; margin:6px 0;">
+                            <button class="badge-option active" data-quality="minimum">MINIMUM</button>
+                            <button class="badge-option" data-quality="standard">STANDARD</button>
+                            <button class="badge-option premium" data-quality="premium">PREMIUM</button>
+                            <button class="badge-option" data-quality="large">LARGE</button>
+                            <button class="badge-option" data-quality="cosplay">COSPLAY</button>
+                        </div>
+                        <div class="flex" style="margin:6px 0;">
+                            <span style="color:#8892b0; font-size:0.7rem; margin-right:6px;">BULK ORDER DISCOUNT</span>
+                            <select id="bulkDiscount" style="background:#0f131e; border:1px solid #272d41; border-radius:30px; padding:4px 12px; color:white; font-size:0.75rem;">
+                                <option value="0">None</option><option value="5">5%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-chart-bar"></i> Results</div>
+                        <div class="results-grid">
+                            <div class="result-item"><span class="label">MATERIAL</span><span class="value" id="matVal">₱0.00</span></div>
+                            <div class="result-item"><span class="label">LABOR</span><span class="value" id="laborVal">₱0.00</span></div>
+                            <div class="result-item"><span class="label">MACHINE</span><span class="value" id="machineVal">₱0.00</span></div>
+                            <div class="result-item"><span class="label">ELECTRICITY</span><span class="value" id="elecVal">₱0.00</span></div>
+                            <div class="result-item highlight"><span class="label">TOTAL COST</span><span class="value" id="totalCostVal">₱0.00</span></div>
+                            <div class="result-item"><span class="label">DISCOUNTED PRICE</span><span class="value" id="discountedPriceVal">₱0.00</span></div>
+                            <div class="result-item"><span class="label">PROFIT</span><span class="value" id="profitVal">₱0.00</span></div>
+                            <div class="result-item"><span class="label">PROFIT MARGIN</span><span class="value" id="profitPercentVal">0.0%</span></div>
+                        </div>
+                        <div style="margin-top:10px; padding-top:10px; border-top:1px solid #1d2235; font-size:0.75rem; color:#8892b0;">
+                            <span>Filament used: <strong id="filamentUsedDisplay">0.00</strong> kg</span>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-bolt"></i> Quick Actions</div>
+                        <div class="quick-actions">
+                            <button class="btn-outline"><i class="fas fa-redo-alt"></i> Reorder</button>
+                            <button class="btn-outline"><i class="fas fa-file-invoice"></i> Quote</button>
+                            <button class="btn-outline"><i class="fas fa-share-alt"></i> Share</button>
+                        </div>
+                        <div style="margin-top:10px;">
+                            <div class="stat-item"><span class="stat-label">Total Orders</span><span class="stat-number" id="statTotalOrders">0</span></div>
+                            <div class="stat-item"><span class="stat-label">Monthly Revenue</span><span class="stat-number" id="statMonthlyRevenue">₱0.00</span></div>
+                            <div class="stat-item"><span class="stat-label">Monthly Goal</span><span class="stat-number" style="color:#f2c94a;">₱50,000</span></div>
+                        </div>
+                        <div class="filament-stock">
+                            <span><i class="fas fa-palette" style="color:#b388ff;"></i> PLA - Red</span>
+                            <span><strong id="plaRedStock">0.30</strong> kg</span>
+                        </div>
+                        <div class="tip-box">
+                            <i class="fas fa-info-circle" style="color:#b388ff;"></i>
+                            Use "Print &amp; Deduct" to auto-log sales.
+                        </div>
+                        <div style="margin-top:6px; color:#7f89aa; font-size:0.6rem; text-align:center;">Kowalzki Studio — Neon Edition</div>
+                    </div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-copy"></i> My Templates</div>
+                        <div class="input-group">
+                            <label>Template name</label>
+                            <input type="text" id="templateName" placeholder="e.g. Mini Dragon" />
+                        </div>
+                        <div class="flex">
+                            <button class="btn-primary" id="saveTemplateBtn" style="padding:6px 16px;"><i class="fas fa-save"></i> Save</button>
+                            <button class="btn-outline" id="loadTemplateBtn"><i class="fas fa-upload"></i> Load</button>
+                        </div>
+                        <div id="templateList" style="margin-top:10px;"></div>
+                        <div style="margin-top:10px; background:#0c0f19; border-radius:12px; padding:10px; border:1px solid #23283d; font-size:0.75rem; color:#8892b0; text-align:center;">
+                            No saved templates yet.
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PAGE: INVENTORY -->
+        <!-- ============================================================ -->
+        <div class="page" id="page-inv">
+            <div class="grid-2">
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-boxes"></i> Filament Inventory</div>
+                        <div class="grid-4">
+                            <div class="text-center"><div class="stat-number" id="invTotalKg">0.00</div><div class="stat-label">TOTAL KG</div></div>
+                            <div class="text-center"><div class="stat-number" id="invLowStock">0</div><div class="stat-label">LOW STOCK</div></div>
+                            <div class="text-center"><div class="stat-number" id="invTotalRolls">0</div><div class="stat-label">TOTAL ROLLS</div></div>
+                            <div class="text-center"><div class="stat-number" id="invEmpty">0</div><div class="stat-label">EMPTY</div></div>
+                        </div>
+                        <div class="table-wrap mt-2">
+                            <table><thead><tr><th>COLOR</th><th>FILAMENT</th><th>STOCK (kg)</th><th>ACTION</th></tr></thead>
+                                <tbody id="inventoryTable"></tbody></table>
+                        </div>
+                        <div class="flex mt-2">
+                            <div class="input-group" style="flex:1;"><label>Add Filament</label><input type="text" id="invNewName" placeholder="PLA - Grey" /></div>
+                            <div class="input-group" style="flex:0 0 80px;"><label>kg</label><input type="number" id="invNewQty" value="1.0" step="0.1" /></div>
+                            <button class="btn-primary" id="addFilamentBtn" style="margin-top:14px;"><i class="fas fa-plus"></i> Add</button>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-chart-pie"></i> Usage Chart</div>
+                        <div id="usageChart"></div>
+                        <div class="card" style="background:#0c0f19; border-color:#252b40; margin-top:10px; padding:12px;">
+                            <div style="font-size:0.75rem; color:#b388ff;"><i class="fas fa-lightbulb"></i> Pro Tips:</div>
+                            <ul style="list-style:none; font-size:0.75rem; color:#8892b0; margin-top:4px;">
+                                <li>• Keep <strong style="color:#eef2ff;">0.5kg+</strong> of best sellers</li>
+                                <li>• Order new filament below <strong style="color:#eef2ff;">1.0kg</strong></li>
+                            </ul>
+                            <div style="margin-top:6px; color:#7f89aa; font-size:0.65rem;">Kowalzki Studio — Never run out!</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PAGE: CUSTOMERS -->
+        <!-- ============================================================ -->
+        <div class="page" id="page-customers">
+            <div class="grid-2">
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-users"></i> Customers</div>
+                        <div class="table-wrap">
+                            <table><thead><tr><th>Name</th><th>Contact</th><th>Orders</th></tr></thead>
+                                <tbody id="customerTable"></tbody></table>
+                        </div>
+                        <div class="flex mt-2">
+                            <div class="input-group" style="flex:1;"><label>Name</label><input type="text" id="custName" placeholder="Juan Dela Cruz" /></div>
+                            <div class="input-group" style="flex:1;"><label>Contact</label><input type="text" id="custContact" placeholder="juan@email.com" /></div>
+                            <button class="btn-primary" id="addCustomerBtn" style="margin-top:14px;"><i class="fas fa-user-plus"></i> ADD</button>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-trophy"></i> Top Customers</div>
+                        <div id="topCustomers"></div>
+                        <div class="card" style="background:#0c0f19; border-color:#252b40; padding:12px; margin-top:10px;">
+                            <div style="font-size:0.75rem; color:#b388ff;"><i class="fas fa-lightbulb"></i> Customer Tips:</div>
+                            <ul style="list-style:none; font-size:0.75rem; color:#8892b0; margin-top:4px;">
+                                <li>• Repeat customers = most valuable</li>
+                                <li>• Offer discounts to loyal customers</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PAGE: INVOICE -->
+        <!-- ============================================================ -->
+        <div class="page" id="page-invoice">
+            <div class="grid-2">
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-file-invoice"></i> Generate Invoice</div>
+                        <div class="input-group"><label>INVOICE #</label><input type="text" id="invNumber" value="INV-2026-001" /></div>
+                        <div class="input-group"><label>CUSTOMER NAME</label><input type="text" id="invCustName" placeholder="Enter customer name" /></div>
+                        <div class="input-group"><label>CUSTOMER CONTACT</label><input type="text" id="invCustContact" placeholder="Email or phone" /></div>
+                        <div class="input-group"><label>JOB DESCRIPTION</label><input type="text" id="invJobDesc" value="3D Printed Dragon Statue" /></div>
+                        <div class="grid-2" style="gap:10px;">
+                            <div class="input-group"><label>QUANTITY</label><input type="number" id="invQty" value="1" /></div>
+                            <div class="input-group"><label>UNIT PRICE (₱)</label><input type="number" id="invUnitPrice" value="3080" /></div>
+                        </div>
+                        <div class="grid-2" style="gap:10px;">
+                            <div class="input-group"><label>PAYMENT METHOD</label><select id="invMethod"><option>Cash</option><option>GCash</option><option>Bank Transfer</option></select></div>
+                            <div class="input-group"><label>PAYMENT STATUS</label><select id="invStatus"><option>Unpaid</option><option>Paid</option><option>Pending</option></select></div>
+                        </div>
+                        <div class="input-group"><label>NOTES</label><textarea id="invNotes" rows="2" placeholder="Special instructions..."></textarea></div>
+                        <div class="flex">
+                            <button class="btn-primary" id="generateInvoiceBtn"><i class="fas fa-file-pdf"></i> GENERATE</button>
+                            <button class="btn-outline"><i class="fas fa-print"></i> PRINT</button>
+                            <button class="btn-outline"><i class="fas fa-copy"></i> COPY</button>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-eye"></i> Invoice Preview</div>
+                        <div class="invoice-preview" id="invoicePreview">
+                            <div class="header"><strong>KOWALZKI STUDIO</strong><br /><span style="font-size:0.7rem; color:#8892b0;" id="previewNumber">INV-2026-001</span><br /><span style="font-size:0.7rem; color:#8892b0;" id="previewDate">2026.05.11</span></div>
+                            <div class="row"><span>Customer:</span><span id="previewCustomer">—</span></div>
+                            <div class="row"><span>Description:</span><span id="previewDesc">3D Printed Dragon Statue</span></div>
+                            <div class="row"><span>Qty:</span><span id="previewQty">1</span></div>
+                            <div class="row" style="border-top:1px solid #262b3d; padding-top:8px; margin-top:8px;"><strong>Total:</strong><strong id="previewTotal">₱3,080.00</strong></div>
+                            <div style="margin-top:10px; border-top:1px solid #262b3d; padding-top:10px; font-size:0.7rem; color:#8892b0; text-align:center;">Thank you for your order.</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PAGE: CALENDAR -->
+        <!-- ============================================================ -->
+        <div class="page" id="page-calendar">
+            <div class="grid-2">
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-calendar-alt"></i> <span id="calMonthYear">August 2026</span></div>
+                        <div class="flex space-between"><button class="btn-outline" id="calPrev">◀ PREV</button><span id="calJobsCount">0 jobs</span><span id="calRevenue">₱0.00</span><button class="btn-outline" id="calNext">NEXT ▶</button></div>
+                        <div class="cal-grid" id="calendarGrid"></div>
+                        <div class="mt-2"><span class="text-muted">Click a day to see jobs.</span></div>
+                        <div id="calDayDetails" style="margin-top:8px; background:#0c0f19; border-radius:12px; padding:10px; border:1px solid #262b3d; min-height:36px; color:#8892b0; font-size:0.8rem;">Select a day</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-clock"></i> This Month</div>
+                        <div id="calMonthEvents" style="max-height:260px; overflow-y:auto;"></div>
+                        <div class="card" style="background:#0c0f19; border-color:#252b40; padding:12px; margin-top:10px;">
+                            <div style="font-size:0.75rem; color:#b388ff;"><i class="fas fa-lightbulb"></i> Workflow Tip:</div>
+                            <div style="font-size:0.75rem; color:#8892b0;">Jobs logged via "Print &amp; Deduct" appear here.</div>
+                            <div style="margin-top:4px; color:#7f89aa; font-size:0.65rem;">Kowalzki Studio — Calendar View</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PAGE: DASHBOARD -->
+        <!-- ============================================================ -->
+        <div class="page" id="page-dash">
+            <div class="card">
+                <div class="card-title"><i class="fas fa-chart-line"></i> Monthly Revenue</div>
+                <div class="grid-3" id="monthlyRevenueChart"></div>
+            </div>
+            <div class="card">
+                <div class="card-title"><i class="fas fa-calendar-week"></i> Weekly Orders</div>
+                <div class="grid-3" id="weeklyOrdersChart"></div>
+            </div>
+            <div class="grid-2">
+                <div>
+                    <div class="card"><div class="card-title"><i class="fas fa-tag"></i> Top Filaments</div><div id="topFilamentsDash">No usage data yet.</div></div>
+                </div>
+                <div>
+                    <div class="card"><div class="card-title"><i class="fas fa-lightbulb"></i> Insights</div>
+                        <div><strong>Business Summary</strong></div>
+                        <div class="stock-item"><span>Total Orders:</span><span id="dashTotalOrders">0</span></div>
+                        <div class="stock-item"><span>Total Revenue:</span><span id="dashTotalRevenue">₱0.00</span></div>
+                        <div class="stock-item"><span>Total Profit:</span><span id="dashTotalProfit">₱0.00</span></div>
+                        <div class="stock-item"><span>Avg Margin:</span><span id="dashAvgMargin">0.0%</span></div>
+                        <div style="margin-top:10px; background:#0c0f19; border-radius:12px; padding:10px; border:1px solid #262b3d; color:#8892b0; font-size:0.8rem;">Start printing to see insights!</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PAGE: HISTORY -->
+        <!-- ============================================================ -->
+        <div class="page" id="page-history">
+            <div class="card">
+                <div class="card-title"><i class="fas fa-clock-rotate-left"></i> Sales History</div>
+                <div class="table-wrap">
+                    <table><thead><tr><th>DATE</th><th>JOBS</th><th>CUSTOMER</th><th>FILAMENT</th><th>COST</th><th>PRICE</th><th>PROFIT</th><th>MARGIN</th><th>STATUS</th></tr></thead>
+                        <tbody id="historyTable"></tbody></table>
+                </div>
+                <div style="margin-top:10px; color:#8892b0; font-size:0.8rem;" id="historySummary">Orders: 0 | Revenue: ₱0.00 | Profit: ₱0.00 | Avg Margin: 0.0%</div>
+                <button class="btn-outline" id="clearHistoryBtn" style="margin-top:6px;"><i class="fas fa-trash"></i> CLEAR</button>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PAGE: PAYMENTS -->
+        <!-- ============================================================ -->
+        <div class="page" id="page-payments">
+            <div class="card">
+                <div class="card-title"><i class="fas fa-credit-card"></i> Payment Tracking</div>
+                <div class="table-wrap">
+                    <table><thead><tr><th>INVOICE</th><th>CUSTOMER</th><th>AMOUNT</th><th>METHOD</th><th>STATUS</th><th>ACTION</th></tr></thead>
+                        <tbody id="paymentTable"></tbody></table>
+                </div>
+                <div class="flex mt-2">
+                    <div class="input-group" style="flex:1;"><label>Invoice</label><input type="text" id="payInvoice" placeholder="INV-001" /></div>
+                    <div class="input-group" style="flex:1;"><label>Customer</label><input type="text" id="payCustomer" placeholder="Name" /></div>
+                    <div class="input-group" style="flex:0 0 100px;"><label>Amount</label><input type="number" id="payAmount" placeholder="0" /></div>
+                    <div class="input-group" style="flex:0 0 100px;"><label>Method</label><select id="payMethod"><option>Cash</option><option>GCash</option><option>Bank</option></select></div>
+                    <div class="input-group" style="flex:0 0 100px;"><label>Status</label><select id="payStatus"><option>Unpaid</option><option>Paid</option><option>Pending</option></select></div>
+                    <button class="btn-primary" id="addPaymentBtn" style="margin-top:14px;"><i class="fas fa-plus"></i> Add</button>
+                </div>
+                <div class="grid-3 mt-2">
+                    <div class="text-center"><div class="stat-label">Receivables</div><div class="stat-number" id="payTotalReceivables">₱0.00</div></div>
+                    <div class="text-center"><div class="stat-label">Collected</div><div class="stat-number" id="payTotalCollected">₱0.00</div></div>
+                    <div class="text-center"><div class="stat-label">Collection Rate</div><div class="stat-number" id="payCollectionRate">0.0%</div></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PAGE: REPORTS -->
+        <!-- ============================================================ -->
+        <div class="page" id="page-reports">
+            <div class="grid-2">
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-chart-simple"></i> Profit &amp; Loss</div>
+                        <div class="stock-item"><span>Total Revenue:</span><span id="reportRevenue">₱0.00</span></div>
+                        <div class="stock-item"><span>Cost of Goods Sold:</span><span id="reportCOGS">₱0.00</span></div>
+                        <div style="border-top:1px solid #262b3d; padding-top:8px; margin-top:6px;"><strong>Gross Profit</strong></div>
+                        <div class="stock-item"><span>Profit Margin:</span><span id="reportMargin">0.0%</span></div>
+                        <div class="stock-item"><span>Total Orders:</span><span id="reportOrders">0</span></div>
+                        <div class="stock-item"><span>Average Order Value:</span><span id="reportAvgOrder">₱0.00</span></div>
+                    </div>
+                </div>
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-receipt"></i> Tax Summary</div>
+                        <div style="font-size:0.75rem; color:#8892b0;">Philippine Tax Summary</div>
+                        <div class="stock-item"><span>Gross Revenue:</span><span id="taxGross">₱0.00</span></div>
+                        <div class="stock-item"><span>VAT (12%):</span><span id="taxVAT">₱0.00</span></div>
+                        <div class="stock-item"><span>Net Revenue:</span><span id="taxNet">₱0.00</span></div>
+                        <div class="stock-item"><span>Income Tax (25%):</span><span id="taxIncome">₱0.00</span></div>
+                        <div style="border-top:1px solid #262b3d; padding-top:8px; margin-top:6px;"><strong>Net Profit After Tax</strong> <span id="taxNetProfit" style="float:right;">₱0.00</span></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ============================================================ -->
+        <!-- PAGE: ACCOUNT -->
+        <!-- ============================================================ -->
+        <div class="page" id="page-account">
+            <div class="grid-2">
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-user-cog"></i> Account</div>
+                        <div class="input-group"><label>Email</label><input type="email" id="accEmail" value="studio@kowalzki.com" /></div>
+                        <div class="input-group"><label>Name</label><input type="text" id="accName" value="Kowalzki Studio" /></div>
+                        <div class="input-group"><label>Role</label><input type="text" id="accRole" value="Admin" disabled /></div>
+                        <button class="btn-danger" style="width:100%;"><i class="fas fa-sign-out-alt"></i> LOGOUT</button>
+                        <div style="margin-top:10px; background:#0c0f19; border-radius:12px; padding:10px; border:1px solid #262b3d; font-size:0.75rem; color:#8892b0;">
+                            <strong style="color:#eef2ff;">Cloud Account:</strong><br />
+                            • Your data syncs across all devices<br />
+                            • Password reset via email verification
+                        </div>
+                        <div style="margin-top:4px; color:#7f89aa; font-size:0.65rem;">Kowalzki Studio — Secure Cloud Access</div>
+                    </div>
+                </div>
+                <div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-shield-alt"></i> Security &amp; Access</div>
+                        <div style="font-size:0.8rem; color:#8892b0;"><strong style="color:#eef2ff;">Security Tips</strong></div>
+                        <ul style="list-style:none; font-size:0.75rem; color:#8892b0; margin-top:6px;">
+                            <li>• Use a strong, unique password</li>
+                            <li>• Email verification protects your account</li>
+                            <li>• Logout when using shared devices</li>
+                            <li>• All changes sync in real-time</li>
+                        </ul>
+                        <div style="margin-top:12px; background:#0c0f19; border-radius:12px; padding:10px; border:1px solid #262b3d;">
+                            <strong style="color:#eef2ff;">Multi-Device Access:</strong><br />
+                            <span style="font-size:0.75rem; color:#8892b0;">• Log in from any device<br />• All data stays in sync automatically</span>
+                        </div>
+                        <div style="margin-top:6px; color:#7f89aa; font-size:0.65rem;">Kowalzki Studio — Anywhere, Anytime!</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ===== JAVASCRIPT ===== -->
+    <!-- ============================================================ -->
+    <script>
+        (function() {
+            'use strict';
+
+            // ================================================================
+            // 1. FIREBASE CONFIG (REPLACE WITH YOUR OWN)
+            // ================================================================
+            const firebaseConfig = {
+                apiKey: "YOUR_API_KEY",
+                authDomain: "YOUR_PROJECT.firebaseapp.com",
+                projectId: "YOUR_PROJECT_ID",
+                storageBucket: "YOUR_PROJECT.appspot.com",
+                messagingSenderId: "YOUR_SENDER_ID",
+                appId: "YOUR_APP_ID"
+            };
+
+            let db = null;
+            let firebaseReady = false;
+            const hasFirebaseConfig = firebaseConfig.apiKey !== "YOUR_API_KEY";
+
+            if (hasFirebaseConfig) {
+                try {
+                    firebase.initializeApp(firebaseConfig);
+                    db = firebase.firestore();
+                    firebaseReady = true;
+                    console.log('✅ Firebase initialized');
+                } catch (e) {
+                    console.warn('⚠️ Firebase init error:', e);
+                    firebaseReady = false;
+                }
+            } else {
+                console.log('ℹ️ Firebase not configured — offline-only mode');
+            }
+
+            // ================================================================
+            // 2. GLOBAL STATE
+            // ================================================================
+            let orders = [];
+            let customers = ['Walk-in', 'Juan Dela Cruz', 'Maria Santos'];
+            let customerContacts = { 'Juan Dela Cruz': 'juan@email.com', 'Maria Santos': 'maria@email.com' };
+            let filaments = { 'PLA - Red': 0.30, 'PLA - Green': 0.60, 'PLA - Neon Green': 0.90, 'PETG - Clear': 1.20,
+                'PLA - Black': 1.80, 'PLA - White': 2.15 };
+            let templates = [];
+            let payments = [];
+            let invoices = [];
+            let calEvents = {};
+            let calMonth = 7,
+                calYear = 2026;
+            let userId = 'studio_default';
+            let lastSyncTime = null;
+            let isSyncing = false;
+            let filamentUsedKg = 0; // Track filament used in current calculation
+
+            // ================================================================
+            // 3. DOM REFS
+            // ================================================================
+            const syncDot = document.getElementById('syncDot');
+            const syncStatus = document.getElementById('syncStatus');
+            const syncLastSync = document.getElementById('syncLastSync');
+
+            // ================================================================
+            // 4. SYNC STATUS
+            // ================================================================
+            function updateSyncStatus(status, message) {
+                syncDot.className = 'dot ' + status;
+                syncStatus.textContent = message;
+            }
+
+            function updateLastSyncTime() {
+                if (lastSyncTime) {
+                    syncLastSync.textContent = 'Last sync: ' + new Date(lastSyncTime).toLocaleString();
+                } else {
+                    syncLastSync.textContent = '';
+                }
+            }
+
+            // ================================================================
+            // 5. LOCAL STORAGE
+            // ================================================================
+            function saveToLocalStorage() {
+                const data = {
+                    orders,
+                    customers,
+                    customerContacts,
+                    filaments,
+                    templates,
+                    payments,
+                    invoices,
+                    calEvents,
+                    userId,
+                    _savedAt: new Date().toISOString()
+                };
+                try {
+                    localStorage.setItem('kowalzki_data', JSON.stringify(data));
+                } catch (e) { console.warn('⚠️ localStorage save error:', e); }
+            }
+
+            function loadFromLocalStorage() {
+                try {
+                    const raw = localStorage.getItem('kowalzki_data');
+                    if (!raw) return false;
+                    const data = JSON.parse(raw);
+                    if (data.orders) orders = data.orders;
+                    if (data.customers) customers = data.customers;
+                    if (data.customerContacts) customerContacts = data.customerContacts;
+                    if (data.filaments) filaments = data.filaments;
+                    if (data.templates) templates = data.templates;
+                    if (data.payments) payments = data.payments;
+                    if (data.invoices) invoices = data.invoices;
+                    if (data.calEvents) calEvents = data.calEvents;
+                    if (data.userId) userId = data.userId;
+                    return true;
+                } catch (e) { return false; }
+            }
+
+            // ================================================================
+            // 6. FIREBASE SYNC
+            // ================================================================
+            async function syncToFirebase() {
+                if (!firebaseReady || !db) { updateSyncStatus('offline', 'Offline (no Firebase)'); return false; }
+                if (!navigator.onLine) { updateSyncStatus('offline', 'Offline — will sync when online'); return false; }
+
+                isSyncing = true;
+                updateSyncStatus('syncing', 'Syncing...');
+
+                try {
+                    const docRef = db.collection('studios').doc(userId);
+                    await docRef.set({
+                        orders,
+                        customers,
+                        customerContacts,
+                        filaments,
+                        templates,
+                        payments,
+                        invoices,
+                        calEvents,
+                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                    }, { merge: true });
+
+                    lastSyncTime = Date.now();
+                    updateSyncStatus('online', '✅ Synced to cloud');
+                    updateLastSyncTime();
+                    saveToLocalStorage();
+                    isSyncing = false;
+                    return true;
+                } catch (e) {
+                    console.error('❌ Firebase sync error:', e);
+                    updateSyncStatus('error', 'Sync failed');
+                    isSyncing = false;
+                    return false;
+                }
+            }
+
+            async function loadFromFirebase() {
+                if (!firebaseReady || !db) { updateSyncStatus('offline', 'Offline mode'); return false; }
+                if (!navigator.onLine) { updateSyncStatus('offline', 'Offline'); return false; }
+
+                try {
+                    const docRef = db.collection('studios').doc(userId);
+                    const doc = await docRef.get();
+                    if (doc.exists) {
+                        const data = doc.data();
+                        if (data.orders) orders = data.orders;
+                        if (data.customers) customers = data.customers;
+                        if (data.customerContacts) customerContacts = data.customerContacts;
+                        if (data.filaments) filaments = data.filaments;
+                        if (data.templates) templates = data.templates;
+                        if (data.payments) payments = data.payments;
+                        if (data.invoices) invoices = data.invoices;
+                        if (data.calEvents) calEvents = data.calEvents;
+                        lastSyncTime = Date.now();
+                        updateSyncStatus('online', '✅ Loaded from cloud');
+                        updateLastSyncTime();
+                        saveToLocalStorage();
+                        refreshAllUI();
+                        return true;
+                    } else {
+                        await syncToFirebase();
+                        return true;
+                    }
+                } catch (e) {
+                    console.warn('⚠️ Firebase load error:', e);
+                    updateSyncStatus('error', 'Cloud load failed');
+                    return false;
+                }
+            }
+
+            // ================================================================
+            // 7. JSON EXPORT / IMPORT
+            // ================================================================
+            function exportJSON() {
+                const data = {
+                    orders,
+                    customers,
+                    customerContacts,
+                    filaments,
+                    templates,
+                    payments,
+                    invoices,
+                    calEvents,
+                    exportedAt: new Date().toISOString(),
+                    version: '1.0'
+                };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `kowalzki_backup_${new Date().toISOString().slice(0,10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+
+            function importJSON(file) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    try {
+                        const data = JSON.parse(e.target.result);
+                        if (data.orders) orders = data.orders;
+                        if (data.customers) customers = data.customers;
+                        if (data.customerContacts) customerContacts = data.customerContacts;
+                        if (data.filaments) filaments = data.filaments;
+                        if (data.templates) templates = data.templates;
+                        if (data.payments) payments = data.payments;
+                        if (data.invoices) invoices = data.invoices;
+                        if (data.calEvents) calEvents = data.calEvents;
+                        saveToLocalStorage();
+                        refreshAllUI();
+                        updateSyncStatus('online', '✅ Data imported');
+                        if (firebaseReady && navigator.onLine) syncToFirebase();
+                    } catch (err) {
+                        alert('❌ Invalid JSON file: ' + err.message);
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            // ================================================================
+            // 8. UI FUNCTIONS
+            // ================================================================
+            function getOrderCounts() {
+                const counts = {};
+                orders.forEach(o => { counts[o.customer] = (counts[o.customer] || 0) + 1; });
+                return counts;
+            }
+
+            function updateInventory() {
+                const tbody = document.getElementById('inventoryTable');
+                tbody.innerHTML = '';
+                let totalKg = 0,
+                    lowStock = 0,
+                    totalRolls = 0,
+                    empty = 0;
+                for (let key in filaments) {
+                    const val = filaments[key];
+                    totalKg += val;
+                    totalRolls++;
+                    if (val < 0.5) lowStock++;
+                    if (val <= 0) empty++;
+                    const tr = document.createElement('tr');
+                    const color = key.includes('Red') ? '#e74c3c' : key.includes('Green') ? '#2ecc71' : key.includes(
+                        'Neon') ? '#39ff14' : key.includes('Blue') ? '#3498db' : '#e3e6f0';
+                    tr.innerHTML =
+                        `<td><span style="display:inline-block;width:14px;height:14px;background:${color};border-radius:4px;"></span></td><td>${key}</td><td>${val.toFixed(2)}</td><td><button class="btn-danger" data-filament="${key}" style="padding:2px 10px;font-size:0.65rem;">✖</button></td>`;
+                    tbody.appendChild(tr);
+                }
+                document.getElementById('invTotalKg').textContent = totalKg.toFixed(2);
+                document.getElementById('invLowStock').textContent = lowStock;
+                document.getElementById('invTotalRolls').textContent = totalRolls;
+                document.getElementById('invEmpty').textContent = empty;
+
+                const chart = document.getElementById('usageChart');
+                chart.innerHTML = '';
+                const sorted = Object.entries(filaments).sort((a, b) => b[1] - a[1]);
+                sorted.forEach(([name, qty]) => {
+                    const div = document.createElement('div');
+                    div.className = 'stock-item';
+                    div.innerHTML = `<span>${name}</span><span>${qty.toFixed(2)}</span>`;
+                    chart.appendChild(div);
+                });
+
+                const sel = document.getElementById('filamentSelect');
+                sel.innerHTML = '<option value="">— Select —</option>';
+                for (let key in filaments) {
+                    const opt = document.createElement('option');
+                    opt.value = key;
+                    opt.textContent = key;
+                    sel.appendChild(opt);
+                }
+
+                const custSel = document.getElementById('customerSelect');
+                custSel.innerHTML = '';
+                customers.forEach(c => {
+                    const opt = document.createElement('option');
+                    opt.value = c;
+                    opt.textContent = c;
+                    custSel.appendChild(opt);
+                });
+
+                document.querySelectorAll('[data-filament]').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const key = this.dataset.filament;
+                        if (filaments[key] > 0) filaments[key] = Math.max(0, filaments[key] - 0.1);
+                        updateInventory();
+                        updateStats();
+                        saveToLocalStorage();
+                        if (firebaseReady && navigator.onLine) syncToFirebase();
+                    });
+                });
+            }
+
+            function updateCustomers() {
+                const tbody = document.getElementById('customerTable');
+                tbody.innerHTML = '';
+                const counts = getOrderCounts();
+                customers.forEach(c => {
+                    if (c === 'Walk-in') return;
+                    const tr = document.createElement('tr');
+                    tr.innerHTML = `<td>${c}</td><td>${customerContacts[c] || ''}</td><td>${counts[c] || 0}</td>`;
+                    tbody.appendChild(tr);
+                });
+
+                const topDiv = document.getElementById('topCustomers');
+                topDiv.innerHTML = '';
+                const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]);
+                sorted.forEach(([name, count]) => {
+                    if (name === 'Walk-in') return;
+                    const div = document.createElement('div');
+                    div.className = 'stock-item';
+                    div.innerHTML = `<span>${name}</span><span>${count} orders</span>`;
+                    topDiv.appendChild(div);
+                });
+            }
+
+            function updatePayments() {
+                const tbody = document.getElementById('paymentTable');
+                tbody.innerHTML = '';
+                payments.forEach(p => {
+                    const tr = document.createElement('tr');
+                    const statusClass = p.status === 'Paid' ? 'badge-success' : p.status === 'Pending' ?
+                        'badge-warning' : 'badge-danger';
+                    tr.innerHTML =
+                        `<td>${p.invoice}</td><td>${p.customer}</td><td>₱${p.amount.toFixed(2)}</td><td>${p.method}</td><td><span class="badge ${statusClass}">${p.status}</span></td><td><button class="btn-danger" data-payidx="${payments.indexOf(p)}" style="padding:2px 10px;font-size:0.65rem;">✖</button></td>`;
+                    tbody.appendChild(tr);
+                });
+                document.querySelectorAll('[data-payidx]').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        payments.splice(parseInt(this.dataset.payidx), 1);
+                        updatePayments();
+                        updateStats();
+                        saveToLocalStorage();
+                        if (firebaseReady && navigator.onLine) syncToFirebase();
+                    });
+                });
+
+                const totalReceivables = payments.reduce((s, p) => s + p.amount, 0);
+                const totalCollected = payments.filter(p => p.status === 'Paid').reduce((s, p) => s + p.amount, 0);
+                document.getElementById('payTotalReceivables').textContent = '₱' + totalReceivables.toFixed(2);
+                document.getElementById('payTotalCollected').textContent = '₱' + totalCollected.toFixed(2);
+                document.getElementById('payCollectionRate').textContent = totalReceivables > 0 ? ((totalCollected /
+                    totalReceivables) * 100).toFixed(1) + '%' : '0.0%';
+            }
+
+            function updateHistory() {
+                const tbody = document.getElementById('historyTable');
+                tbody.innerHTML = '';
+                if (orders.length === 0) {
+                    tbody.innerHTML =
+                    '<tr><td colspan="9" class="text-muted text-center">No sales recorded yet.</td></tr>';
+                } else {
+                    orders.slice().reverse().forEach(o => {
+                        const tr = document.createElement('tr');
+                        const profit = (o.discountedPrice || o.totalCost || 0) - (o.totalCost || 0);
+                        const margin = o.totalCost > 0 ? (profit / o.totalCost * 100) : 0;
+                        tr.innerHTML =
+                            `<td>${o.date || 'today'}</td><td>${o.job || 'Unnamed'}</td><td>${o.customer || 'Walk-in'}</td><td>${o.filament || '—'}</td><td>${(o.totalCost || 0).toFixed(2)}</td><td>${(o.discountedPrice || o.totalCost || 0).toFixed(2)}</td><td>${profit.toFixed(2)}</td><td>${margin.toFixed(1)}%</td><td><span class="badge badge-success">Completed</span></td>`;
+                        tbody.appendChild(tr);
+                    });
+                }
+                const totalRevenue = orders.reduce((s, o) => s + (o.totalCost || 0), 0);
+                const totalProfit = orders.reduce((s, o) => {
+                    const profit = (o.discountedPrice || o.totalCost || 0) - (o.totalCost || 0);
+                    return s + profit;
+                }, 0);
+                const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue * 100) : 0;
+                document.getElementById('historySummary').textContent =
+                    `Orders: ${orders.length} | Revenue: ₱${totalRevenue.toFixed(2)} | Profit: ₱${totalProfit.toFixed(2)} | Avg Margin: ${avgMargin.toFixed(1)}%`;
+            }
+
+            function updateReports() {
+                const totalRevenue = orders.reduce((s, o) => s + (o.totalCost || 0), 0);
+                const totalCOGS = orders.reduce((s, o) => s + ((o.totalCost || 0) * 0.4), 0);
+                const totalProfit = totalRevenue - totalCOGS;
+                const margin = totalRevenue > 0 ? (totalProfit / totalRevenue * 100) : 0;
+                const avgOrder = orders.length > 0 ? totalRevenue / orders.length : 0;
+
+                document.getElementById('reportRevenue').textContent = '₱' + totalRevenue.toFixed(2);
+                document.getElementById('reportCOGS').textContent = '₱' + totalCOGS.toFixed(2);
+                document.getElementById('reportMargin').textContent = margin.toFixed(1) + '%';
+                document.getElementById('reportOrders').textContent = orders.length;
+                document.getElementById('reportAvgOrder').textContent = '₱' + avgOrder.toFixed(2);
+
+                const gross = totalRevenue;
+                const vat = gross * 0.12;
+                const net = gross - vat;
+                const incomeTax = net * 0.25;
+                document.getElementById('taxGross').textContent = '₱' + gross.toFixed(2);
+                document.getElementById('taxVAT').textContent = '₱' + vat.toFixed(2);
+                document.getElementById('taxNet').textContent = '₱' + net.toFixed(2);
+                document.getElementById('taxIncome').textContent = '₱' + incomeTax.toFixed(2);
+                document.getElementById('taxNetProfit').textContent = '₱' + (net - incomeTax).toFixed(2);
+            }
+
+            function updateDashboard() {
+                const totalRevenue = orders.reduce((s, o) => s + (o.totalCost || 0), 0);
+                const totalProfit = orders.reduce((s, o) => {
+                    const profit = (o.discountedPrice || o.totalCost || 0) - (o.totalCost || 0);
+                    return s + profit;
+                }, 0);
+                const avgMargin = totalRevenue > 0 ? (totalProfit / totalRevenue * 100) : 0;
+                document.getElementById('dashTotalOrders').textContent = orders.length;
+                document.getElementById('dashTotalRevenue').textContent = '₱' + totalRevenue.toFixed(2);
+                document.getElementById('dashTotalProfit').textContent = '₱' + totalProfit.toFixed(2);
+                document.getElementById('dashAvgMargin').textContent = avgMargin.toFixed(1) + '%';
+
+                const months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'];
+                const monthData = months.map(() => (Math.random() * 5000).toFixed(0));
+                const chartDiv = document.getElementById('monthlyRevenueChart');
+                chartDiv.innerHTML = '';
+                months.forEach((m, i) => {
+                    const div = document.createElement('div');
+                    div.className = 'text-center';
+                    const bar = document.createElement('div');
+                    bar.style.cssText =
+                        `height:${parseInt(monthData[i])/60}px;background:#b388ff;border-radius:4px 4px 0 0;width:100%;max-height:120px;min-height:8px;`;
+                    div.innerHTML =
+                        `<div style="height:120px;display:flex;flex-direction:column-reverse;align-items:center;">${bar.outerHTML}</div><div style="font-size:0.65rem;color:#8892b0;">${m}</div><div style="font-size:0.65rem;">₱${monthData[i]}</div>`;
+                    chartDiv.appendChild(div);
+                });
+
+                const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+                const dayData = days.map(() => (Math.random() * 2000).toFixed(0));
+                const weekDiv = document.getElementById('weeklyOrdersChart');
+                weekDiv.innerHTML = '';
+                days.forEach((d, i) => {
+                    const div = document.createElement('div');
+                    div.className = 'text-center';
+                    const bar = document.createElement('div');
+                    bar.style.cssText =
+                        `height:${parseInt(dayData[i])/20}px;background:#6fcf97;border-radius:4px 4px 0 0;width:100%;max-height:100px;min-height:6px;`;
+                    div.innerHTML =
+                        `<div style="height:100px;display:flex;flex-direction:column-reverse;align-items:center;">${bar.outerHTML}</div><div style="font-size:0.65rem;color:#8892b0;">${d}</div><div style="font-size:0.65rem;">₱${dayData[i]}</div>`;
+                    weekDiv.appendChild(div);
+                });
+
+                const topDiv = document.getElementById('topFilamentsDash');
+                topDiv.innerHTML = '';
+                const sorted = Object.entries(filaments).sort((a, b) => b[1] - a[1]).slice(0, 5);
+                sorted.forEach(([name, qty]) => {
+                    const div = document.createElement('div');
+                    div.className = 'stock-item';
+                    div.innerHTML = `<span>${name}</span><span>${qty.toFixed(2)} kg</span>`;
+                    topDiv.appendChild(div);
+                });
+            }
+
+            function updateStats() {
+                const total = orders.length;
+                const revenue = orders.reduce((sum, o) => sum + (o.totalCost || 0), 0);
+                document.getElementById('statTotalOrders').textContent = total;
+                document.getElementById('statMonthlyRevenue').textContent = '₱' + revenue.toFixed(2);
+                let low = 0;
+                for (let k in filaments)
+                    if (filaments[k] < 0.5) low += filaments[k];
+                document.getElementById('statLowStock').textContent = low.toFixed(2) + ' kg';
+                document.getElementById('plaRedStock').textContent = (filaments['PLA - Red'] || 0).toFixed(2);
+
+                const container = document.getElementById('templateList');
+                container.innerHTML = '';
+                templates.forEach((t, i) => {
+                    const div = document.createElement('div');
+                    div.style.cssText =
+                        'display:flex;justify-content:space-between;background:#0c0f19;padding:4px 10px;border-radius:30px;margin-bottom:4px;border:1px solid #272d41;font-size:0.75rem;';
+                    div.innerHTML =
+                        `<span>📁 ${t.name}</span><div><button class="btn-outline" style="padding:2px 10px;font-size:0.65rem;" data-idx="${i}">Load</button> <button class="btn-danger" style="padding:2px 10px;font-size:0.65rem;" data-delidx="${i}">✕</button></div>`;
+                    container.appendChild(div);
+                });
+                container.querySelectorAll('[data-idx]').forEach(b => b.addEventListener('click', function() {
+                    const t = templates[parseInt(this.dataset.idx)];
+                    if (t) {
+                        document.getElementById('jobName').value = t.jobName || '';
+                        document.getElementById('materialCost').value = t.materialCost || '';
+                        document.getElementById('printTime').value = t.printTime || '';
+                        document.getElementById('machineDep').value = t.machineDep || '';
+                        document.getElementById('overhead').value = t.overhead || '';
+                        document.getElementById('profitMargin').value = t.profitMargin || '';
+                        document.getElementById('customerSelect').value = t.customer || 'Walk-in';
+                        document.getElementById('filamentSelect').value = t.filament || '';
+                    }
+                }));
+                container.querySelectorAll('[data-delidx]').forEach(b => b.addEventListener('click', function() {
+                    templates.splice(parseInt(this.dataset.delidx), 1);
+                    updateStats();
+                    saveToLocalStorage();
+                    if (firebaseReady && navigator.onLine) syncToFirebase();
+                }));
+            }
+
+            // ================================================================
+            // 9. CALENDAR
+            // ================================================================
+            function renderCalendar() {
+                const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
+                    'October', 'November', 'December'
+                ];
+                document.getElementById('calMonthYear').textContent = monthNames[calMonth] + ' ' + calYear;
+
+                const grid = document.getElementById('calendarGrid');
+                grid.innerHTML = '';
+                ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].forEach(d => {
+                    const div = document.createElement('div');
+                    div.className = 'day-header';
+                    div.textContent = d;
+                    grid.appendChild(div);
+                });
+
+                const firstDay = new Date(calYear, calMonth, 1).getDay();
+                const daysInMonth = new Date(calYear, calMonth + 1, 0).getDate();
+                const today = new Date();
+
+                for (let i = 0; i < firstDay; i++) {
+                    const div = document.createElement('div');
+                    div.className = 'day empty';
+                    grid.appendChild(div);
+                }
+
+                for (let d = 1; d <= daysInMonth; d++) {
+                    const div = document.createElement('div');
+                    div.className = 'day';
+                    if (d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear()) div
+                        .classList.add('today');
+                    const dateKey = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    if (calEvents[dateKey]) div.classList.add('event');
+                    div.textContent = d;
+                    div.dataset.date = dateKey;
+                    div.addEventListener('click', function() {
+                        const key = this.dataset.date;
+                        const ev = calEvents[key] || [];
+                        document.getElementById('calDayDetails').innerHTML =
+                            `<strong>${key}</strong><br>${ev.length ? ev.map(e => '📌 ' + e).join('<br>') : 'No jobs scheduled'}`;
+                    });
+                    grid.appendChild(div);
+                }
+
+                const eventsDiv = document.getElementById('calMonthEvents');
+                eventsDiv.innerHTML = '';
+                let count = 0,
+                    revenue = 0;
+                for (let key in calEvents) {
+                    if (key.startsWith(`${calYear}-${String(calMonth+1).padStart(2,'0')}`)) {
+                        count += calEvents[key].length;
+                        eventsDiv.innerHTML +=
+                            `<div class="stock-item"><span>${key}</span><span>${calEvents[key].join(', ')}</span></div>`;
+                    }
+                }
+                document.getElementById('calJobsCount').textContent = count + ' jobs';
+                document.getElementById('calRevenue').textContent = '₱' + (count * 350).toFixed(2);
+            }
+
+            document.getElementById('calPrev').addEventListener('click', function() {
+                calMonth--;
+                if (calMonth < 0) { calMonth = 11;
+                    calYear--; }
+                renderCalendar();
+            });
+            document.getElementById('calNext').addEventListener('click', function() {
+                calMonth++;
+                if (calMonth > 11) { calMonth = 0;
+                    calYear++; }
+                renderCalendar();
+            });
+
+            // ================================================================
+            // 10. CALCULATOR (UPDATED: grams to kg, minutes, ₱1/g, ₱0.80/min electricity)
+            // ================================================================
+            function calculate() {
+                const matCostPerGram = parseFloat(document.getElementById('materialCost').value) || 1.00;
+                const minutes = parseFloat(document.getElementById('printTime').value) || 0;
+                const depPerMin = parseFloat(document.getElementById('machineDep').value) || 0.25;
+                const overhead = parseFloat(document.getElementById('overhead').value) || 0;
+                const margin = parseFloat(document.getElementById('profitMargin').value) || 0;
+                const discount = parseFloat(document.getElementById('bulkDiscount').value) || 0;
+
+                // Filament usage: assume 0.5g per minute of print time (typical for 3D printing)
+                const gramsUsed = minutes * 0.5;
+                filamentUsedKg = gramsUsed / 1000; // convert to kg
+
+                // Material: ₱1 per gram × grams used
+                const material = matCostPerGram * gramsUsed;
+
+                // Labor: ₱2.50 per minute (150 per hour / 60)
+                const labor = minutes * 2.50;
+
+                // Machine: ₱0.25 per minute (configurable)
+                const machine = minutes * depPerMin;
+
+                // Electricity: ₱0.80 per minute (fixed)
+                const electricity = minutes * 0.80;
+
+                // Total cost
+                const totalCost = material + labor + machine + electricity + overhead;
+
+                // Discounted price with profit margin
+                const discounted = totalCost * (1 + margin / 100) * (1 - discount / 100);
+                const profit = discounted - totalCost;
+                const profitPercent = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+
+                // Update UI
+                document.getElementById('matVal').textContent = '₱' + material.toFixed(2);
+                document.getElementById('laborVal').textContent = '₱' + labor.toFixed(2);
+                document.getElementById('machineVal').textContent = '₱' + machine.toFixed(2);
+                document.getElementById('elecVal').textContent = '₱' + electricity.toFixed(2);
+                document.getElementById('totalCostVal').textContent = '₱' + totalCost.toFixed(2);
+                document.getElementById('discountedPriceVal').textContent = '₱' + discounted.toFixed(2);
+                document.getElementById('profitVal').textContent = '₱' + profit.toFixed(2);
+                document.getElementById('profitPercentVal').textContent = profitPercent.toFixed(1) + '%';
+                document.getElementById('filamentUsedDisplay').textContent = filamentUsedKg.toFixed(3);
+            }
+
+            function logOrder(withDeduct) {
+                const name = document.getElementById('jobName').value.trim() || 'Unnamed';
+                const customer = document.getElementById('customerSelect').value || 'Walk-in';
+                const filament = document.getElementById('filamentSelect').value;
+                const totalCost = parseFloat(document.getElementById('totalCostVal').textContent.replace('₱', '')) || 0;
+                const discounted = parseFloat(document.getElementById('discountedPriceVal').textContent.replace('₱',
+                    '')) || 0;
+
+                if (name) {
+                    const order = {
+                        job: name,
+                        totalCost: totalCost,
+                        discountedPrice: discounted,
+                        customer: customer,
+                        filament: filament || '—',
+                        filamentUsed: filamentUsedKg,
+                        date: new Date().toISOString().slice(0, 10)
+                    };
+                    orders.push(order);
+
+                    if (withDeduct && filament && filaments[filament] !== undefined) {
+                        filaments[filament] = Math.max(0, filaments[filament] - filamentUsedKg);
+                    }
+
+                    const dateKey = new Date().toISOString().slice(0, 10);
+                    if (!calEvents[dateKey]) calEvents[dateKey] = [];
+                    calEvents[dateKey].push(name + ' (' + filamentUsedKg.toFixed(2) + 'kg)');
+
+                    saveToLocalStorage();
+                    if (firebaseReady && navigator.onLine) syncToFirebase();
+                    refreshAllUI();
+                }
+            }
+
+            function refreshAllUI() {
+                updateInventory();
+                updateCustomers();
+                updatePayments();
+                updateHistory();
+                updateDashboard();
+                updateReports();
+                updateStats();
+                renderCalendar();
+                calculate();
+            }
+
+            // ================================================================
+            // 11. NAVIGATION
+            // ================================================================
+            const menuButtons = document.querySelectorAll('.menu-nav button');
+            const pages = document.querySelectorAll('.page');
+
+            function navigateTo(pageId) {
+                pages.forEach(p => p.classList.remove('active'));
+                menuButtons.forEach(b => b.classList.remove('active'));
+                document.getElementById('page-' + pageId).classList.add('active');
+                document.querySelector(`.menu-nav button[data-page="${pageId}"]`).classList.add('active');
+                if (pageId === 'dash') updateDashboard();
+                if (pageId === 'history') updateHistory();
+                if (pageId === 'calendar') renderCalendar();
+                if (pageId === 'inv') updateInventory();
+                if (pageId === 'customers') updateCustomers();
+                if (pageId === 'payments') updatePayments();
+                if (pageId === 'reports') updateReports();
+            }
+
+            menuButtons.forEach(btn => {
+                btn.addEventListener('click', () => navigateTo(btn.dataset.page));
+            });
+
+            // ================================================================
+            // 12. EVENT BINDINGS
+            // ================================================================
+
+            // Calculator
+            document.getElementById('calculateBtn').addEventListener('click', calculate);
+
+            document.getElementById('printDeductBtn').addEventListener('click', function() {
+                calculate();
+                logOrder(true);
+                this.innerHTML = '<i class="fas fa-check"></i> LOGGED!';
+                setTimeout(() => {
+                    this.innerHTML = '<i class="fas fa-print"></i> PRINT & DEDUCT';
+                }, 2000);
+            });
+
+            document.getElementById('resetBtn').addEventListener('click', function() {
+                document.getElementById('jobName').value = '';
+                document.getElementById('materialCost').value = '1.00';
+                document.getElementById('printTime').value = '';
+                document.getElementById('machineDep').value = '0.25';
+                document.getElementById('overhead').value = '';
+                document.getElementById('profitMargin').value = '';
+                document.getElementById('filamentSelect').selectedIndex = 0;
+                document.getElementById('customerSelect').selectedIndex = 0;
+                document.getElementById('bulkDiscount').selectedIndex = 0;
+                document.getElementById('matVal').textContent = '₱0.00';
+                document.getElementById('laborVal').textContent = '₱0.00';
+                document.getElementById('machineVal').textContent = '₱0.00';
+                document.getElementById('elecVal').textContent = '₱0.00';
+                document.getElementById('totalCostVal').textContent = '₱0.00';
+                document.getElementById('discountedPriceVal').textContent = '₱0.00';
+                document.getElementById('profitVal').textContent = '₱0.00';
+                document.getElementById('profitPercentVal').textContent = '0.0%';
+                document.getElementById('filamentUsedDisplay').textContent = '0.000';
+            });
+
+            document.querySelectorAll('.badge-option').forEach(badge => {
+                badge.addEventListener('click', function() {
+                    document.querySelectorAll('.badge-option').forEach(b => b.classList.remove('active'));
+                    this.classList.add('active');
+                });
+            });
+
+            // Templates
+            document.getElementById('saveTemplateBtn').addEventListener('click', function() {
+                const name = document.getElementById('templateName').value.trim();
+                if (!name) return alert('Enter template name');
+                templates.push({
+                    name: name,
+                    jobName: document.getElementById('jobName').value,
+                    materialCost: document.getElementById('materialCost').value,
+                    printTime: document.getElementById('printTime').value,
+                    machineDep: document.getElementById('machineDep').value,
+                    overhead: document.getElementById('overhead').value,
+                    profitMargin: document.getElementById('profitMargin').value,
+                    customer: document.getElementById('customerSelect').value,
+                    filament: document.getElementById('filamentSelect').value
+                });
+                updateStats();
+                saveToLocalStorage();
+                if (firebaseReady && navigator.onLine) syncToFirebase();
+            });
+
+            document.getElementById('loadTemplateBtn').addEventListener('click', function() {
+                if (templates.length) {
+                    const t = templates[templates.length - 1];
+                    document.getElementById('jobName').value = t.jobName || '';
+                    document.getElementById('materialCost').value = t.materialCost || '1.00';
+                    document.getElementById('printTime').value = t.printTime || '';
+                    document.getElementById('machineDep').value = t.machineDep || '0.25';
+                    document.getElementById('overhead').value = t.overhead || '';
+                    document.getElementById('profitMargin').value = t.profitMargin || '';
+                    document.getElementById('customerSelect').value = t.customer || 'Walk-in';
+                    document.getElementById('filamentSelect').value = t.filament || '';
+                }
+            });
+
+            // Inventory
+            document.getElementById('addFilamentBtn').addEventListener('click', function() {
+                const name = document.getElementById('invNewName').value.trim();
+                const qty = parseFloat(document.getElementById('invNewQty').value);
+                if (!name || isNaN(qty) || qty <= 0) return alert('Enter valid name and quantity');
+                filaments[name] = (filaments[name] || 0) + qty;
+                updateInventory();
+                updateStats();
+                saveToLocalStorage();
+                if (firebaseReady && navigator.onLine) syncToFirebase();
+            });
+
+            // Customers
+            document.getElementById('addCustomerBtn').addEventListener('click', function() {
+                const name = document.getElementById('custName').value.trim();
+                const contact = document.getElementById('custContact').value.trim();
+                if (!name || name === 'Walk-in') return alert('Enter a valid customer name');
+                if (!customers.includes(name)) {
+                    customers.push(name);
+                    if (contact) customerContacts[name] = contact;
+                    updateCustomers();
+                    updateStats();
+                    saveToLocalStorage();
+                    if (firebaseReady && navigator.onLine) syncToFirebase();
+                    document.getElementById('custName').value = '';
+                    document.getElementById('custContact').value = '';
+                } else {
+                    alert('Customer already exists');
+                }
+            });
+
+            // Invoice
+            document.getElementById('generateInvoiceBtn').addEventListener('click', function() {
+                const number = document.getElementById('invNumber').value || 'INV-2026-001';
+                const customer = document.getElementById('invCustName').value || '—';
+                const desc = document.getElementById('invJobDesc').value || '3D Print';
+                const qty = parseInt(document.getElementById('invQty').value) || 1;
+                const price = parseFloat(document.getElementById('invUnitPrice').value) || 0;
+                const total = qty * price;
+
+                document.getElementById('previewNumber').textContent = number;
+                document.getElementById('previewDate').textContent = new Date().toISOString().slice(0, 10);
+                document.getElementById('previewCustomer').textContent = customer;
+                document.getElementById('previewDesc').textContent = desc;
+                document.getElementById('previewQty').textContent = qty;
+                document.getElementById('previewTotal').textContent = '₱' + total.toFixed(2);
+
+                invoices.push({ number, customer, desc, qty, price, total });
+                saveToLocalStorage();
+                if (firebaseReady && navigator.onLine) syncToFirebase();
+            });
+
+            // Payments
+            document.getElementById('addPaymentBtn').addEventListener('click', function() {
+                const invoice = document.getElementById('payInvoice').value.trim() || 'INV-' + Date.now();
+                const customer = document.getElementById('payCustomer').value.trim() || 'Walk-in';
+                const amount = parseFloat(document.getElementById('payAmount').value) || 0;
+                const method = document.getElementById('payMethod').value;
+                const status = document.getElementById('payStatus').value;
+                if (amount <= 0) return alert('Enter a valid amount');
+                payments.push({ invoice, customer, amount, method, status });
+                updatePayments();
+                updateStats();
+                saveToLocalStorage();
+                if (firebaseReady && navigator.onLine) syncToFirebase();
+            });
+
+            // History
+            document.getElementById('clearHistoryBtn').addEventListener('click', function() {
+                if (confirm('Clear all order history?')) {
+                    orders = [];
+                    calEvents = {};
+                    updateHistory();
+                    updateStats();
+                    updateDashboard();
+                    updateReports();
+                    renderCalendar();
+                    saveToLocalStorage();
+                    if (firebaseReady && navigator.onLine) syncToFirebase();
+                }
+            });
+
+            // Sync bar
+            document.getElementById('syncNowBtn').addEventListener('click', function() {
+                if (!navigator.onLine) {
+                    alert('You are offline. Please connect to the internet to sync.');
+                    return;
+                }
+                if (!firebaseReady) {
+                    alert('Firebase is not configured. Please add your Firebase config to enable cloud sync.');
+                    return;
+                }
+                syncToFirebase().then(() => refreshAllUI());
+            });
+
+            document.getElementById('exportJsonBtn').addEventListener('click', exportJSON);
+            document.getElementById('importJsonBtn').addEventListener('click', function() {
+                document.getElementById('fileInput').click();
+            });
+            document.getElementById('fileInput').addEventListener('change', function(e) {
+                if (this.files && this.files[0]) {
+                    importJSON(this.files[0]);
+                }
+                this.value = '';
+            });
+
+            // ================================================================
+            // 13. INITIALIZATION
+            // ================================================================
+            async function init() {
+                const hasLocal = loadFromLocalStorage();
+
+                if (firebaseReady && navigator.onLine) {
+                    updateSyncStatus('syncing', 'Connecting to cloud...');
+                    const loaded = await loadFromFirebase();
+                    if (loaded) {
+                        refreshAllUI();
+                        updateSyncStatus('online', '✅ Synced to cloud');
+                    } else if (hasLocal) {
+                        updateSyncStatus('offline', 'Using local data');
+                    }
+                } else if (hasLocal) {
+                    updateSyncStatus('offline', 'Offline mode — using local data');
+                } else {
+                    // Seed data
+                    orders.push({ job: 'Dragon V2', totalCost: 1250, discountedPrice: 1750, customer: 'Juan Dela Cruz',
+                        filament: 'PLA - Red', filamentUsed: 0.12, date: '2026-03-20' });
+                    orders.push({ job: 'Bust', totalCost: 780, discountedPrice: 1092, customer: 'Maria Santos',
+                        filament: 'PLA - Green', filamentUsed: 0.08, date: '2026-03-22' });
+                    orders.push({ job: 'Helmet', totalCost: 2100, discountedPrice: 2940, customer: 'Walk-in',
+                        filament: 'PLA - Black', filamentUsed: 0.20, date: '2026-03-23' });
+                    payments.push({ invoice: 'INV-001', customer: 'Juan Dela Cruz', amount: 1250, method: 'Cash',
+                        status: 'Paid' });
+                    payments.push({ invoice: 'INV-002', customer: 'Maria Santos', amount: 780, method: 'GCash',
+                        status: 'Pending' });
+                    calEvents['2026-03-20'] = ['Dragon V2 (0.12kg)'];
+                    calEvents['2026-03-22'] = ['Bust (0.08kg)'];
+                    calEvents['2026-03-23'] = ['Helmet (0.20kg)'];
+                    saveToLocalStorage();
+                    refreshAllUI();
+                    updateSyncStatus('online', 'Ready');
+                }
+
+                refreshAllUI();
+                updateLastSyncTime();
+
+                window.addEventListener('online', () => {
+                    updateSyncStatus('syncing', 'Back online — syncing...');
+                    if (firebaseReady) {
+                        loadFromFirebase().then(() => refreshAllUI());
+                    }
+                });
+                window.addEventListener('offline', () => {
+                    updateSyncStatus('offline', 'Offline — using local data');
+                });
+
+                setTimeout(() => {
+                    const sel = document.getElementById('filamentSelect');
+                    if (sel && sel.options.length > 1) sel.selectedIndex = 1;
+                }, 200);
+            }
+
+            init();
+        })();
+    </script>
+
+</body>
+</html>
