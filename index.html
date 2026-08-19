@@ -6,14 +6,16 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <meta name="apple-mobile-web-app-title" content="Kowalzki Studio" />
-    <title>Kowalzki Studio · Cloud + Offline</title>
+    <title>Kowalzki Studio · Multi-User</title>
 
     <!-- PWA Manifest -->
     <link rel="manifest" href="manifest.json" />
     <link rel="apple-touch-icon" href="icon-192.png" />
 
-    <!-- Firebase SDKs -->
+    <!-- Firebase SDKs (CDN) -->
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js">
+    </script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js">
     </script>
     <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js">
     </script>
@@ -42,6 +44,106 @@
             width: 100%;
         }
 
+        /* ===== AUTH OVERLAY ===== */
+        #authOverlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(11, 13, 21, 0.95);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            z-index: 9999;
+            backdrop-filter: blur(10px);
+        }
+        #authOverlay.hidden {
+            display: none;
+        }
+        .auth-box {
+            background: #11151f;
+            border: 1px solid #262b3b;
+            border-radius: 24px;
+            padding: 40px;
+            max-width: 420px;
+            width: 100%;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+        }
+        .auth-box .logo {
+            text-align: center;
+            margin-bottom: 24px;
+        }
+        .auth-box .logo h2 {
+            font-size: 1.5rem;
+            background: linear-gradient(135deg, #b388ff, #82b1ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        .auth-box .logo p {
+            color: #8892b0;
+            font-size: 0.8rem;
+        }
+        .auth-box .input-group {
+            margin-bottom: 14px;
+        }
+        .auth-box .input-group label {
+            color: #8892b0;
+            font-size: 0.7rem;
+            text-transform: uppercase;
+        }
+        .auth-box .input-group input {
+            background: #0f131e;
+            border: 1px solid #272d41;
+            border-radius: 12px;
+            padding: 12px 16px;
+            color: #eef2ff;
+            font-size: 0.9rem;
+            width: 100%;
+            outline: none;
+            transition: 0.2s;
+        }
+        .auth-box .input-group input:focus {
+            border-color: #b388ff;
+            box-shadow: 0 0 0 3px rgba(179, 136, 255, 0.15);
+        }
+        .auth-box .btn-primary {
+            width: 100%;
+            justify-content: center;
+            padding: 14px;
+            font-size: 0.9rem;
+            margin-top: 8px;
+        }
+        .auth-box .auth-toggle {
+            text-align: center;
+            margin-top: 16px;
+            color: #8892b0;
+            font-size: 0.8rem;
+        }
+        .auth-box .auth-toggle a {
+            color: #b388ff;
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .auth-box .auth-toggle a:hover {
+            text-decoration: underline;
+        }
+        .auth-box .error-msg {
+            color: #eb5757;
+            font-size: 0.8rem;
+            text-align: center;
+            margin-top: 8px;
+            min-height: 20px;
+        }
+        .auth-box .success-msg {
+            color: #6fcf97;
+            font-size: 0.8rem;
+            text-align: center;
+            margin-top: 8px;
+            min-height: 20px;
+        }
+
         /* ===== HEADER ===== */
         .studio-header {
             display: flex;
@@ -61,17 +163,43 @@
             height: 40px;
             border-radius: 8px;
         }
-        .studio-header h1 {
+        .studio-header .brand h1 {
             font-size: 1.3rem;
             background: linear-gradient(135deg, #b388ff, #82b1ff);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
             background-clip: text;
         }
-        .studio-header .sub {
+        .studio-header .brand .sub {
             color: #8892b0;
             font-size: 0.7rem;
             margin-top: 2px;
+        }
+        .studio-header .user-menu {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: #141824;
+            padding: 6px 16px 6px 12px;
+            border-radius: 40px;
+            border: 1px solid #2a2f42;
+        }
+        .studio-header .user-menu .user-email {
+            font-size: 0.75rem;
+            color: #b0b8d1;
+        }
+        .studio-header .user-menu .logout-btn {
+            background: transparent;
+            border: 1px solid #7f4b6a;
+            color: #e08ab0;
+            padding: 4px 12px;
+            border-radius: 30px;
+            cursor: pointer;
+            font-size: 0.65rem;
+            transition: 0.2s;
+        }
+        .studio-header .user-menu .logout-btn:hover {
+            background: #3d1f2e;
         }
 
         /* ===== SYNC BAR ===== */
@@ -583,15 +711,89 @@
             .studio-header .brand img {
                 height: 30px;
             }
-            .studio-header h1 {
+            .studio-header .brand h1 {
                 font-size: 1rem;
+            }
+            .studio-header .user-menu .user-email {
+                font-size: 0.6rem;
             }
         }
     </style>
 </head>
 <body>
 
-    <div class="app">
+    <!-- ===== AUTH OVERLAY ===== -->
+    <div id="authOverlay">
+        <div class="auth-box">
+            <div class="logo">
+                <h2>KOWALZKI STUDIO</h2>
+                <p>3D Printing Business Management</p>
+            </div>
+            <div id="authForm">
+                <!-- Login Form -->
+                <div id="loginForm">
+                    <div class="input-group">
+                        <label>Email</label>
+                        <input type="email" id="loginEmail" placeholder="you@example.com" />
+                    </div>
+                    <div class="input-group">
+                        <label>Password</label>
+                        <input type="password" id="loginPassword" placeholder="••••••••" />
+                    </div>
+                    <button class="btn-primary" id="loginBtn"><i class="fas fa-sign-in-alt"></i> Login</button>
+                    <div class="auth-toggle" style="margin-top:10px;">
+                        <a id="showForgotPassword">Forgot Password?</a>
+                    </div>
+                    <div class="auth-toggle">
+                        Don't have an account? <a id="showSignup">Create one</a>
+                    </div>
+                    <div id="authError" class="error-msg"></div>
+                    <div id="authSuccess" class="success-msg"></div>
+                </div>
+
+                <!-- Signup Form -->
+                <div id="signupForm" style="display:none;">
+                    <div class="input-group">
+                        <label>Full Name</label>
+                        <input type="text" id="signupName" placeholder="Juan Dela Cruz" />
+                    </div>
+                    <div class="input-group">
+                        <label>Email</label>
+                        <input type="email" id="signupEmail" placeholder="you@example.com" />
+                    </div>
+                    <div class="input-group">
+                        <label>Password</label>
+                        <input type="password" id="signupPassword" placeholder="•••••••• (min 6 chars)" />
+                    </div>
+                    <button class="btn-primary green" id="signupBtn"><i class="fas fa-user-plus"></i> Create Account</button>
+                    <div class="auth-toggle">
+                        Already have an account? <a id="showLogin">Login</a>
+                    </div>
+                    <div id="signupError" class="error-msg"></div>
+                    <div id="signupSuccess" class="success-msg"></div>
+                </div>
+
+                <!-- Forgot Password Form -->
+                <div id="forgotPasswordForm" style="display:none;">
+                    <div class="input-group">
+                        <label>Email</label>
+                        <input type="email" id="resetEmail" placeholder="you@example.com" />
+                    </div>
+                    <button class="btn-primary" id="resetPasswordBtn"><i class="fas fa-envelope"></i> Send Reset Link</button>
+                    <div class="auth-toggle">
+                        <a id="backToLogin">← Back to Login</a>
+                    </div>
+                    <div id="resetError" class="error-msg"></div>
+                    <div id="resetSuccess" class="success-msg"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============================================================ -->
+    <!-- ===== MAIN APP ===== -->
+    <!-- ============================================================ -->
+    <div class="app" id="mainApp" style="display:none;">
 
         <!-- ===== HEADER ===== -->
         <div class="studio-header">
@@ -599,21 +801,27 @@
                 <img src="logo.png" alt="Kowalzki Studio" id="appLogo" onerror="this.style.display='none'" />
                 <div>
                     <h1>KOWALZKI STUDIO</h1>
-                    <div class="sub"><i class="fas fa-cube" style="margin-right:4px;"></i> 3D PRINTING · PHILIPPINES · CLOUD SYNC</div>
+                    <div class="sub"><i class="fas fa-cube" style="margin-right:4px;"></i> 3D PRINTING · MULTI-USER · CLOUD SYNC</div>
                 </div>
             </div>
-            <div class="menu-nav" id="menuNav">
-                <button class="active" data-page="calc">Calc</button>
-                <button data-page="inv">Inv</button>
-                <button data-page="customers">Customers</button>
-                <button data-page="invoice">Invoice</button>
-                <button data-page="calendar">Calendar</button>
-                <button data-page="dash">Dash</button>
-                <button data-page="history">History</button>
-                <button data-page="payments">Payments</button>
-                <button data-page="reports">Reports</button>
-                <button data-page="account">Account</button>
+            <div class="user-menu">
+                <span class="user-email" id="userEmailDisplay">user@example.com</span>
+                <button class="logout-btn" id="logoutBtn"><i class="fas fa-sign-out-alt"></i> Logout</button>
             </div>
+        </div>
+
+        <!-- ===== MENU ===== -->
+        <div class="menu-nav" id="menuNav">
+            <button class="active" data-page="calc">Calc</button>
+            <button data-page="inv">Inv</button>
+            <button data-page="customers">Customers</button>
+            <button data-page="invoice">Invoice</button>
+            <button data-page="calendar">Calendar</button>
+            <button data-page="dash">Dash</button>
+            <button data-page="history">History</button>
+            <button data-page="payments">Payments</button>
+            <button data-page="reports">Reports</button>
+            <button data-page="account">Account</button>
         </div>
 
         <!-- ===== SYNC BAR ===== -->
@@ -683,7 +891,7 @@
                             <div class="result-item"><span class="label">PROFIT MARGIN</span><span class="value" id="profitPercentVal">0.0%</span></div>
                         </div>
                         <div style="margin-top:10px; padding-top:10px; border-top:1px solid #1d2235; font-size:0.75rem; color:#8892b0;">
-                            <span>Filament used: <strong id="filamentUsedDisplay">0.00</strong> kg</span>
+                            <span>Filament used: <strong id="filamentUsedDisplay">0.000</strong> kg</span>
                         </div>
                     </div>
                 </div>
@@ -708,7 +916,7 @@
                             <i class="fas fa-info-circle" style="color:#b388ff;"></i>
                             Use "Print &amp; Deduct" to auto-log sales.
                         </div>
-                        <div style="margin-top:6px; color:#7f89aa; font-size:0.6rem; text-align:center;">Kowalzki Studio — Neon Edition</div>
+                        <div style="margin-top:6px; color:#7f89aa; font-size:0.6rem; text-align:center;">Kowalzki Studio — Multi-User Edition</div>
                     </div>
                     <div class="card">
                         <div class="card-title"><i class="fas fa-copy"></i> My Templates</div>
@@ -986,31 +1194,35 @@
                 <div>
                     <div class="card">
                         <div class="card-title"><i class="fas fa-user-cog"></i> Account</div>
-                        <div class="input-group"><label>Email</label><input type="email" id="accEmail" value="studio@kowalzki.com" /></div>
-                        <div class="input-group"><label>Name</label><input type="text" id="accName" value="Kowalzki Studio" /></div>
-                        <div class="input-group"><label>Role</label><input type="text" id="accRole" value="Admin" disabled /></div>
-                        <button class="btn-danger" style="width:100%;"><i class="fas fa-sign-out-alt"></i> LOGOUT</button>
+                        <div class="input-group"><label>Email</label><input type="email" id="accEmail" value="" disabled /></div>
+                        <div class="input-group"><label>Name</label><input type="text" id="accName" value="" /></div>
+                        <div class="input-group"><label>User ID</label><input type="text" id="accUserId" value="" disabled /></div>
+                        <button class="btn-primary" id="updateProfileBtn"><i class="fas fa-save"></i> Update Profile</button>
+                        <button class="btn-outline" id="resetPasswordBtnAccount" style="width:100%; margin-top:8px; justify-content:center;">
+                            <i class="fas fa-key"></i> Reset Password
+                        </button>
                         <div style="margin-top:10px; background:#0c0f19; border-radius:12px; padding:10px; border:1px solid #262b3d; font-size:0.75rem; color:#8892b0;">
                             <strong style="color:#eef2ff;">Cloud Account:</strong><br />
                             • Your data syncs across all devices<br />
+                            • Each user has their own private storage<br />
                             • Password reset via email verification
                         </div>
-                        <div style="margin-top:4px; color:#7f89aa; font-size:0.65rem;">Kowalzki Studio — Secure Cloud Access</div>
+                        <div style="margin-top:4px; color:#7f89aa; font-size:0.65rem;">Kowalzki Studio — Multi-User Edition</div>
                     </div>
                 </div>
                 <div>
                     <div class="card">
                         <div class="card-title"><i class="fas fa-shield-alt"></i> Security &amp; Access</div>
-                        <div style="font-size:0.8rem; color:#8892b0;"><strong style="color:#eef2ff;">Security Tips</strong></div>
+                        <div style="font-size:0.8rem; color:#8892b0;"><strong style="color:#eef2ff;">Multi-User Features</strong></div>
                         <ul style="list-style:none; font-size:0.75rem; color:#8892b0; margin-top:6px;">
-                            <li>• Use a strong, unique password</li>
-                            <li>• Email verification protects your account</li>
-                            <li>• Logout when using shared devices</li>
-                            <li>• All changes sync in real-time</li>
+                            <li>• Each user has their own private data</li>
+                            <li>• All data stored securely in the cloud</li>
+                            <li>• Syncs automatically across all devices</li>
+                            <li>• Create multiple accounts for your team</li>
                         </ul>
                         <div style="margin-top:12px; background:#0c0f19; border-radius:12px; padding:10px; border:1px solid #262b3d;">
-                            <strong style="color:#eef2ff;">Multi-Device Access:</strong><br />
-                            <span style="font-size:0.75rem; color:#8892b0;">• Log in from any device<br />• All data stays in sync automatically</span>
+                            <strong style="color:#eef2ff;">Security Tips:</strong><br />
+                            <span style="font-size:0.75rem; color:#8892b0;">• Use a strong, unique password<br />• Email verification protects your account<br />• Logout when using shared devices</span>
                         </div>
                         <div style="margin-top:6px; color:#7f89aa; font-size:0.65rem;">Kowalzki Studio — Anywhere, Anytime!</div>
                     </div>
@@ -1028,37 +1240,513 @@
             'use strict';
 
             // ================================================================
-            // 1. FIREBASE CONFIG (REPLACE WITH YOUR OWN)
+            // 1. 🔥 FIREBASE CONFIGURATION (REPLACE WITH YOUR ACTUAL CONFIG)
             // ================================================================
             const firebaseConfig = {
-                apiKey: "YOUR_API_KEY",
-                authDomain: "YOUR_PROJECT.firebaseapp.com",
-                projectId: "YOUR_PROJECT_ID",
-                storageBucket: "YOUR_PROJECT.appspot.com",
-                messagingSenderId: "YOUR_SENDER_ID",
-                appId: "YOUR_APP_ID"
+                apiKey: "AIzaSyDGaIqJXas13ZCVgNUbRo2nPoDXQL394tQ",
+                authDomain: "d-calculator-5f6dd.firebaseapp.com",
+                projectId: "d-calculator-5f6dd",
+                storageBucket: "d-calculator-5f6dd.firebasestorage.app",
+                messagingSenderId: "243898320546",
+                appId: "1:243898320546:web:c72b3a52be5112e2f2b9fb"
             };
 
+            // ================================================================
+            // 2. INIT FIREBASE
+            // ================================================================
+            let auth = null;
             let db = null;
             let firebaseReady = false;
-            const hasFirebaseConfig = firebaseConfig.apiKey !== "YOUR_API_KEY";
+            let currentUser = null;
+            let currentUserData = null;
+            let authUnsubscribe = null;
+            let dbUnsubscribe = null;
 
-            if (hasFirebaseConfig) {
-                try {
-                    firebase.initializeApp(firebaseConfig);
-                    db = firebase.firestore();
-                    firebaseReady = true;
-                    console.log('✅ Firebase initialized');
-                } catch (e) {
-                    console.warn('⚠️ Firebase init error:', e);
-                    firebaseReady = false;
-                }
-            } else {
-                console.log('ℹ️ Firebase not configured — offline-only mode');
+            try {
+                firebase.initializeApp(firebaseConfig);
+                auth = firebase.auth();
+                db = firebase.firestore();
+                firebaseReady = true;
+                console.log('✅ Firebase initialized with Auth + Firestore');
+            } catch (e) {
+                console.warn('⚠️ Firebase init error:', e);
+                firebaseReady = false;
             }
 
             // ================================================================
-            // 2. GLOBAL STATE
+            // 3. DOM REFS
+            // ================================================================
+            const authOverlay = document.getElementById('authOverlay');
+            const mainApp = document.getElementById('mainApp');
+            const loginForm = document.getElementById('loginForm');
+            const signupForm = document.getElementById('signupForm');
+            const forgotPasswordForm = document.getElementById('forgotPasswordForm');
+            const loginBtn = document.getElementById('loginBtn');
+            const signupBtn = document.getElementById('signupBtn');
+            const resetPasswordBtn = document.getElementById('resetPasswordBtn');
+            const resetPasswordBtnAccount = document.getElementById('resetPasswordBtnAccount');
+            const showSignup = document.getElementById('showSignup');
+            const showLogin = document.getElementById('showLogin');
+            const showForgotPassword = document.getElementById('showForgotPassword');
+            const backToLogin = document.getElementById('backToLogin');
+            const authError = document.getElementById('authError');
+            const authSuccess = document.getElementById('authSuccess');
+            const signupError = document.getElementById('signupError');
+            const signupSuccess = document.getElementById('signupSuccess');
+            const resetError = document.getElementById('resetError');
+            const resetSuccess = document.getElementById('resetSuccess');
+            const userEmailDisplay = document.getElementById('userEmailDisplay');
+            const logoutBtn = document.getElementById('logoutBtn');
+            const loginEmail = document.getElementById('loginEmail');
+            const loginPassword = document.getElementById('loginPassword');
+            const signupName = document.getElementById('signupName');
+            const signupEmail = document.getElementById('signupEmail');
+            const signupPassword = document.getElementById('signupPassword');
+            const resetEmail = document.getElementById('resetEmail');
+
+            // ================================================================
+            // 4. AUTH FUNCTIONS
+            // ================================================================
+
+            function showAuthError(msg) {
+                authError.textContent = msg;
+                authSuccess.textContent = '';
+            }
+
+            function showAuthSuccess(msg) {
+                authSuccess.textContent = msg;
+                authError.textContent = '';
+            }
+
+            function showSignupError(msg) {
+                signupError.textContent = msg;
+                signupSuccess.textContent = '';
+            }
+
+            function showSignupSuccess(msg) {
+                signupSuccess.textContent = msg;
+                signupError.textContent = '';
+            }
+
+            function showResetError(msg) {
+                resetError.textContent = msg;
+                resetSuccess.textContent = '';
+            }
+
+            function showResetSuccess(msg) {
+                resetSuccess.textContent = msg;
+                resetError.textContent = '';
+            }
+
+            // Toggle between login and signup
+            showSignup.addEventListener('click', function(e) {
+                e.preventDefault();
+                loginForm.style.display = 'none';
+                signupForm.style.display = 'block';
+                forgotPasswordForm.style.display = 'none';
+                authError.textContent = '';
+                authSuccess.textContent = '';
+                signupError.textContent = '';
+                signupSuccess.textContent = '';
+            });
+
+            showLogin.addEventListener('click', function(e) {
+                e.preventDefault();
+                loginForm.style.display = 'block';
+                signupForm.style.display = 'none';
+                forgotPasswordForm.style.display = 'none';
+                signupError.textContent = '';
+                signupSuccess.textContent = '';
+                authError.textContent = '';
+                authSuccess.textContent = '';
+            });
+
+            // Show Forgot Password
+            showForgotPassword.addEventListener('click', function(e) {
+                e.preventDefault();
+                loginForm.style.display = 'none';
+                signupForm.style.display = 'none';
+                forgotPasswordForm.style.display = 'block';
+                authError.textContent = '';
+                authSuccess.textContent = '';
+                resetError.textContent = '';
+                resetSuccess.textContent = '';
+                resetEmail.value = loginEmail.value || '';
+            });
+
+            // Back to Login from Forgot Password
+            backToLogin.addEventListener('click', function(e) {
+                e.preventDefault();
+                loginForm.style.display = 'block';
+                signupForm.style.display = 'none';
+                forgotPasswordForm.style.display = 'none';
+                resetError.textContent = '';
+                resetSuccess.textContent = '';
+            });
+
+            // Login
+            loginBtn.addEventListener('click', function() {
+                const email = loginEmail.value.trim();
+                const password = loginPassword.value;
+
+                if (!email || !password) {
+                    showAuthError('Please enter email and password');
+                    return;
+                }
+
+                showAuthError('');
+                loginBtn.disabled = true;
+                loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging in...';
+
+                auth.signInWithEmailAndPassword(email, password)
+                    .then(function(userCredential) {
+                        showAuthSuccess('✅ Logged in successfully!');
+                        loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
+                        loginBtn.disabled = false;
+                    })
+                    .catch(function(error) {
+                        let msg = error.message;
+                        if (error.code === 'auth/user-not-found') msg = 'No account found with this email.';
+                        if (error.code === 'auth/wrong-password') msg = 'Incorrect password. Please try again.';
+                        if (error.code === 'auth/too-many-requests') msg =
+                            'Too many failed attempts. Please try again later.';
+                        showAuthError('❌ ' + msg);
+                        loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
+                        loginBtn.disabled = false;
+                    });
+            });
+
+            // Signup
+            signupBtn.addEventListener('click', function() {
+                const name = signupName.value.trim();
+                const email = signupEmail.value.trim();
+                const password = signupPassword.value;
+
+                if (!name || !email || !password) {
+                    showSignupError('Please fill in all fields');
+                    return;
+                }
+
+                if (password.length < 6) {
+                    showSignupError('Password must be at least 6 characters');
+                    return;
+                }
+
+                showSignupError('');
+                signupBtn.disabled = true;
+                signupBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating account...';
+
+                auth.createUserWithEmailAndPassword(email, password)
+                    .then(function(userCredential) {
+                        const user = userCredential.user;
+                        return db.collection('users').doc(user.uid).set({
+                            name: name,
+                            email: email,
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        }).then(function() {
+                            return user;
+                        });
+                    })
+                    .then(function(user) {
+                        showSignupSuccess('✅ Account created successfully!');
+                        signupBtn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account';
+                        signupBtn.disabled = false;
+                        setTimeout(function() {
+                            loginForm.style.display = 'block';
+                            signupForm.style.display = 'none';
+                            forgotPasswordForm.style.display = 'none';
+                            loginEmail.value = email;
+                            loginPassword.value = password;
+                            showSignupSuccess('');
+                        }, 1500);
+                    })
+                    .catch(function(error) {
+                        let msg = error.message;
+                        if (error.code === 'auth/email-already-in-use') msg =
+                            'This email is already registered. Please login.';
+                        if (error.code === 'auth/weak-password') msg =
+                            'Password is too weak. Use at least 6 characters.';
+                        showSignupError('❌ ' + msg);
+                        signupBtn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account';
+                        signupBtn.disabled = false;
+                    });
+            });
+
+            // Reset Password (from login screen)
+            resetPasswordBtn.addEventListener('click', function() {
+                const email = resetEmail.value.trim();
+
+                if (!email) {
+                    showResetError('Please enter your email address');
+                    return;
+                }
+
+                showResetError('');
+                resetPasswordBtn.disabled = true;
+                resetPasswordBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+
+                auth.sendPasswordResetEmail(email)
+                    .then(function() {
+                        showResetSuccess('✅ Password reset link sent to ' + email +
+                            '. Check your inbox.');
+                        resetPasswordBtn.innerHTML = '<i class="fas fa-envelope"></i> Send Reset Link';
+                        resetPasswordBtn.disabled = false;
+                        setTimeout(function() {
+                            loginForm.style.display = 'block';
+                            signupForm.style.display = 'none';
+                            forgotPasswordForm.style.display = 'none';
+                            loginEmail.value = email;
+                            resetSuccess.textContent = '';
+                        }, 4000);
+                    })
+                    .catch(function(error) {
+                        let msg = error.message;
+                        if (error.code === 'auth/user-not-found') msg =
+                            'No account found with this email address.';
+                        showResetError('❌ ' + msg);
+                        resetPasswordBtn.innerHTML = '<i class="fas fa-envelope"></i> Send Reset Link';
+                        resetPasswordBtn.disabled = false;
+                    });
+            });
+
+            // Reset Password (from Account page)
+            resetPasswordBtnAccount.addEventListener('click', function() {
+                if (!currentUser) {
+                    alert('Please login first.');
+                    return;
+                }
+                const email = currentUser.email;
+                if (confirm('Send password reset link to ' + email + '?')) {
+                    resetPasswordBtnAccount.disabled = true;
+                    resetPasswordBtnAccount.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
+
+                    auth.sendPasswordResetEmail(email)
+                        .then(function() {
+                            alert('✅ Password reset link sent to ' + email +
+                                '. Check your inbox.');
+                            resetPasswordBtnAccount.innerHTML =
+                                '<i class="fas fa-key"></i> Reset Password';
+                            resetPasswordBtnAccount.disabled = false;
+                        })
+                        .catch(function(error) {
+                            alert('❌ Error: ' + error.message);
+                            resetPasswordBtnAccount.innerHTML =
+                                '<i class="fas fa-key"></i> Reset Password';
+                            resetPasswordBtnAccount.disabled = false;
+                        });
+                }
+            });
+
+            // Logout
+            logoutBtn.addEventListener('click', function() {
+                if (auth) {
+                    auth.signOut();
+                }
+            });
+
+            // ================================================================
+            // 5. FIREBASE REAL-TIME DATA SYNC
+            // ================================================================
+
+            function startDataSync(userId) {
+                if (!firebaseReady || !db) return;
+
+                const userDocRef = db.collection('studios').doc(userId);
+
+                dbUnsubscribe = userDocRef.onSnapshot(function(doc) {
+                    if (doc.exists) {
+                        const data = doc.data();
+                        if (data.orders) orders = data.orders;
+                        if (data.customers) customers = data.customers;
+                        if (data.customerContacts) customerContacts = data.customerContacts;
+                        if (data.filaments) filaments = data.filaments;
+                        if (data.templates) templates = data.templates;
+                        if (data.payments) payments = data.payments;
+                        if (data.invoices) invoices = data.invoices;
+                        if (data.calEvents) calEvents = data.calEvents;
+                        if (data.userName) currentUserData = { name: data.userName };
+
+                        lastSyncTime = Date.now();
+                        updateSyncStatus('online', '✅ Synced to cloud');
+                        updateLastSyncTime();
+                        saveToLocalStorage();
+                        refreshAllUI();
+                    }
+                }, function(error) {
+                    console.warn('⚠️ Firestore sync error:', error);
+                    updateSyncStatus('error', 'Sync error: ' + error.message);
+                });
+            }
+
+            function pushDataToFirebase(userId) {
+                if (!firebaseReady || !db || !userId) return;
+
+                const data = {
+                    orders: orders,
+                    customers: customers,
+                    customerContacts: customerContacts,
+                    filaments: filaments,
+                    templates: templates,
+                    payments: payments,
+                    invoices: invoices,
+                    calEvents: calEvents,
+                    userName: currentUserData ? currentUserData.name : '',
+                    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                };
+
+                db.collection('studios').doc(userId).set(data, { merge: true })
+                    .then(function() {
+                        console.log('✅ Data pushed to Firebase');
+                        lastSyncTime = Date.now();
+                        updateSyncStatus('online', '✅ Synced to cloud');
+                        updateLastSyncTime();
+                    })
+                    .catch(function(error) {
+                        console.warn('⚠️ Push error:', error);
+                        updateSyncStatus('error', 'Sync error: ' + error.message);
+                    });
+            }
+
+            // ================================================================
+            // 6. AUTH STATE LISTENER
+            // ================================================================
+
+            function initAuth() {
+                if (!firebaseReady || !auth) {
+                    console.log('ℹ️ Running in offline mode (no Firebase Auth)');
+                    authOverlay.classList.add('hidden');
+                    mainApp.style.display = 'block';
+                    document.getElementById('userEmailDisplay').textContent = 'Offline Mode';
+                    document.getElementById('accEmail').value = 'offline@local';
+                    document.getElementById('accName').value = 'Offline User';
+                    document.getElementById('accUserId').value = 'local_offline';
+                    const hasLocal = loadFromLocalStorage();
+                    if (!hasLocal) {
+                        seedDefaultData();
+                    }
+                    refreshAllUI();
+                    updateSyncStatus('offline', 'Offline mode');
+                    return;
+                }
+
+                authUnsubscribe = auth.onAuthStateChanged(function(user) {
+                    if (user) {
+                        currentUser = user;
+                        authOverlay.classList.add('hidden');
+                        mainApp.style.display = 'block';
+
+                        userEmailDisplay.textContent = user.email;
+                        document.getElementById('accEmail').value = user.email;
+                        document.getElementById('accUserId').value = user.uid;
+
+                        db.collection('users').doc(user.uid).get()
+                            .then(function(doc) {
+                                if (doc.exists) {
+                                    const data = doc.data();
+                                    currentUserData = data;
+                                    document.getElementById('accName').value = data.name || '';
+                                }
+                            })
+                            .catch(function(err) {
+                                console.warn('⚠️ Could not load user profile:', err);
+                            });
+
+                        const userDocRef = db.collection('studios').doc(user.uid);
+                        userDocRef.get()
+                            .then(function(doc) {
+                                if (doc.exists) {
+                                    const data = doc.data();
+                                    if (data.orders) orders = data.orders;
+                                    if (data.customers) customers = data.customers;
+                                    if (data.customerContacts) customerContacts = data
+                                    .customerContacts;
+                                    if (data.filaments) filaments = data.filaments;
+                                    if (data.templates) templates = data.templates;
+                                    if (data.payments) payments = data.payments;
+                                    if (data.invoices) invoices = data.invoices;
+                                    if (data.calEvents) calEvents = data.calEvents;
+                                    if (data.userName) currentUserData = { name: data.userName };
+                                    saveToLocalStorage();
+                                    refreshAllUI();
+                                    updateSyncStatus('online', '✅ Loaded from cloud');
+                                } else {
+                                    seedDefaultData();
+                                    pushDataToFirebase(user.uid);
+                                    refreshAllUI();
+                                    updateSyncStatus('online', '✅ Ready');
+                                }
+                            })
+                            .catch(function(err) {
+                                console.warn('⚠️ Could not load studio data:', err);
+                                const hasLocal = loadFromLocalStorage();
+                                if (!hasLocal) {
+                                    seedDefaultData();
+                                }
+                                refreshAllUI();
+                                updateSyncStatus('offline', 'Using local data');
+                            });
+
+                        startDataSync(user.uid);
+
+                    } else {
+                        currentUser = null;
+                        currentUserData = null;
+                        if (dbUnsubscribe) {
+                            dbUnsubscribe();
+                            dbUnsubscribe = null;
+                        }
+                        authOverlay.classList.remove('hidden');
+                        mainApp.style.display = 'none';
+                        loginForm.style.display = 'block';
+                        signupForm.style.display = 'none';
+                        forgotPasswordForm.style.display = 'none';
+                        loginEmail.value = '';
+                        loginPassword.value = '';
+                        authError.textContent = '';
+                        authSuccess.textContent = '';
+                        resetError.textContent = '';
+                        resetSuccess.textContent = '';
+                    }
+                });
+            }
+
+            // ================================================================
+            // 7. SEED DATA
+            // ================================================================
+
+            function seedDefaultData() {
+                orders = [];
+                customers = ['Walk-in', 'Juan Dela Cruz', 'Maria Santos'];
+                customerContacts = { 'Juan Dela Cruz': 'juan@email.com', 'Maria Santos': 'maria@email.com' };
+                filaments = { 'PLA - Red': 0.30, 'PLA - Green': 0.60, 'PLA - Neon Green': 0.90, 'PETG - Clear': 1.20,
+                    'PLA - Black': 1.80, 'PLA - White': 2.15 };
+                templates = [];
+                payments = [];
+                invoices = [];
+                calEvents = {};
+
+                orders.push({ job: 'Dragon V2', totalCost: 1250, discountedPrice: 1750, customer: 'Juan Dela Cruz',
+                    filament: 'PLA - Red', filamentUsed: 0.12, date: new Date().toISOString().slice(0, 10) });
+                orders.push({ job: 'Bust', totalCost: 780, discountedPrice: 1092, customer: 'Maria Santos',
+                    filament: 'PLA - Green', filamentUsed: 0.08, date: new Date().toISOString().slice(0, 10) });
+                orders.push({ job: 'Helmet', totalCost: 2100, discountedPrice: 2940, customer: 'Walk-in',
+                    filament: 'PLA - Black', filamentUsed: 0.20, date: new Date().toISOString().slice(0, 10) });
+
+                payments.push({ invoice: 'INV-001', customer: 'Juan Dela Cruz', amount: 1250, method: 'Cash',
+                    status: 'Paid' });
+                payments.push({ invoice: 'INV-002', customer: 'Maria Santos', amount: 780, method: 'GCash',
+                    status: 'Pending' });
+
+                const today = new Date().toISOString().slice(0, 10);
+                calEvents[today] = ['Dragon V2 (0.12kg)', 'Bust (0.08kg)'];
+                const tomorrow = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+                calEvents[tomorrow] = ['Helmet (0.20kg)'];
+
+                saveToLocalStorage();
+            }
+
+            // ================================================================
+            // 8. GLOBAL STATE
             // ================================================================
             let orders = [];
             let customers = ['Walk-in', 'Juan Dela Cruz', 'Maria Santos'];
@@ -1069,23 +1757,19 @@
             let payments = [];
             let invoices = [];
             let calEvents = {};
-            let calMonth = 7,
-                calYear = 2026;
-            let userId = 'studio_default';
+            let calMonth = new Date().getMonth();
+            let calYear = new Date().getFullYear();
             let lastSyncTime = null;
             let isSyncing = false;
-            let filamentUsedKg = 0; // Track filament used in current calculation
+            let filamentUsedKg = 0;
 
             // ================================================================
-            // 3. DOM REFS
+            // 9. SYNC STATUS
             // ================================================================
             const syncDot = document.getElementById('syncDot');
             const syncStatus = document.getElementById('syncStatus');
             const syncLastSync = document.getElementById('syncLastSync');
 
-            // ================================================================
-            // 4. SYNC STATUS
-            // ================================================================
             function updateSyncStatus(status, message) {
                 syncDot.className = 'dot ' + status;
                 syncStatus.textContent = message;
@@ -1100,7 +1784,7 @@
             }
 
             // ================================================================
-            // 5. LOCAL STORAGE
+            // 10. LOCAL STORAGE
             // ================================================================
             function saveToLocalStorage() {
                 const data = {
@@ -1112,17 +1796,18 @@
                     payments,
                     invoices,
                     calEvents,
-                    userId,
                     _savedAt: new Date().toISOString()
                 };
                 try {
-                    localStorage.setItem('kowalzki_data', JSON.stringify(data));
+                    localStorage.setItem('kowalzki_data_' + (currentUser ? currentUser.uid : 'offline'), JSON.stringify(
+                    data));
                 } catch (e) { console.warn('⚠️ localStorage save error:', e); }
             }
 
             function loadFromLocalStorage() {
                 try {
-                    const raw = localStorage.getItem('kowalzki_data');
+                    const key = 'kowalzki_data_' + (currentUser ? currentUser.uid : 'offline');
+                    const raw = localStorage.getItem(key);
                     if (!raw) return false;
                     const data = JSON.parse(raw);
                     if (data.orders) orders = data.orders;
@@ -1133,135 +1818,14 @@
                     if (data.payments) payments = data.payments;
                     if (data.invoices) invoices = data.invoices;
                     if (data.calEvents) calEvents = data.calEvents;
-                    if (data.userId) userId = data.userId;
                     return true;
                 } catch (e) { return false; }
             }
 
             // ================================================================
-            // 6. FIREBASE SYNC
+            // 11. UI FUNCTIONS
             // ================================================================
-            async function syncToFirebase() {
-                if (!firebaseReady || !db) { updateSyncStatus('offline', 'Offline (no Firebase)'); return false; }
-                if (!navigator.onLine) { updateSyncStatus('offline', 'Offline — will sync when online'); return false; }
 
-                isSyncing = true;
-                updateSyncStatus('syncing', 'Syncing...');
-
-                try {
-                    const docRef = db.collection('studios').doc(userId);
-                    await docRef.set({
-                        orders,
-                        customers,
-                        customerContacts,
-                        filaments,
-                        templates,
-                        payments,
-                        invoices,
-                        calEvents,
-                        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-                    }, { merge: true });
-
-                    lastSyncTime = Date.now();
-                    updateSyncStatus('online', '✅ Synced to cloud');
-                    updateLastSyncTime();
-                    saveToLocalStorage();
-                    isSyncing = false;
-                    return true;
-                } catch (e) {
-                    console.error('❌ Firebase sync error:', e);
-                    updateSyncStatus('error', 'Sync failed');
-                    isSyncing = false;
-                    return false;
-                }
-            }
-
-            async function loadFromFirebase() {
-                if (!firebaseReady || !db) { updateSyncStatus('offline', 'Offline mode'); return false; }
-                if (!navigator.onLine) { updateSyncStatus('offline', 'Offline'); return false; }
-
-                try {
-                    const docRef = db.collection('studios').doc(userId);
-                    const doc = await docRef.get();
-                    if (doc.exists) {
-                        const data = doc.data();
-                        if (data.orders) orders = data.orders;
-                        if (data.customers) customers = data.customers;
-                        if (data.customerContacts) customerContacts = data.customerContacts;
-                        if (data.filaments) filaments = data.filaments;
-                        if (data.templates) templates = data.templates;
-                        if (data.payments) payments = data.payments;
-                        if (data.invoices) invoices = data.invoices;
-                        if (data.calEvents) calEvents = data.calEvents;
-                        lastSyncTime = Date.now();
-                        updateSyncStatus('online', '✅ Loaded from cloud');
-                        updateLastSyncTime();
-                        saveToLocalStorage();
-                        refreshAllUI();
-                        return true;
-                    } else {
-                        await syncToFirebase();
-                        return true;
-                    }
-                } catch (e) {
-                    console.warn('⚠️ Firebase load error:', e);
-                    updateSyncStatus('error', 'Cloud load failed');
-                    return false;
-                }
-            }
-
-            // ================================================================
-            // 7. JSON EXPORT / IMPORT
-            // ================================================================
-            function exportJSON() {
-                const data = {
-                    orders,
-                    customers,
-                    customerContacts,
-                    filaments,
-                    templates,
-                    payments,
-                    invoices,
-                    calEvents,
-                    exportedAt: new Date().toISOString(),
-                    version: '1.0'
-                };
-                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `kowalzki_backup_${new Date().toISOString().slice(0,10)}.json`;
-                a.click();
-                URL.revokeObjectURL(url);
-            }
-
-            function importJSON(file) {
-                const reader = new FileReader();
-                reader.onload = function(e) {
-                    try {
-                        const data = JSON.parse(e.target.result);
-                        if (data.orders) orders = data.orders;
-                        if (data.customers) customers = data.customers;
-                        if (data.customerContacts) customerContacts = data.customerContacts;
-                        if (data.filaments) filaments = data.filaments;
-                        if (data.templates) templates = data.templates;
-                        if (data.payments) payments = data.payments;
-                        if (data.invoices) invoices = data.invoices;
-                        if (data.calEvents) calEvents = data.calEvents;
-                        saveToLocalStorage();
-                        refreshAllUI();
-                        updateSyncStatus('online', '✅ Data imported');
-                        if (firebaseReady && navigator.onLine) syncToFirebase();
-                    } catch (err) {
-                        alert('❌ Invalid JSON file: ' + err.message);
-                    }
-                };
-                reader.readAsText(file);
-            }
-
-            // ================================================================
-            // 8. UI FUNCTIONS
-            // ================================================================
             function getOrderCounts() {
                 const counts = {};
                 orders.forEach(o => { counts[o.customer] = (counts[o.customer] || 0) + 1; });
@@ -1328,7 +1892,7 @@
                         updateInventory();
                         updateStats();
                         saveToLocalStorage();
-                        if (firebaseReady && navigator.onLine) syncToFirebase();
+                        if (currentUser) pushDataToFirebase(currentUser.uid);
                     });
                 });
             }
@@ -1373,7 +1937,7 @@
                         updatePayments();
                         updateStats();
                         saveToLocalStorage();
-                        if (firebaseReady && navigator.onLine) syncToFirebase();
+                        if (currentUser) pushDataToFirebase(currentUser.uid);
                     });
                 });
 
@@ -1447,20 +2011,26 @@
                 document.getElementById('dashTotalProfit').textContent = '₱' + totalProfit.toFixed(2);
                 document.getElementById('dashAvgMargin').textContent = avgMargin.toFixed(1) + '%';
 
-                const months = ['Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug'];
-                const monthData = months.map(() => (Math.random() * 5000).toFixed(0));
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                const currentMonth = new Date().getMonth();
+                const monthData = [];
+                for (let i = 0; i < 6; i++) {
+                    const idx = (currentMonth - 5 + i + 12) % 12;
+                    monthData.push((Math.random() * 5000).toFixed(0));
+                }
                 const chartDiv = document.getElementById('monthlyRevenueChart');
                 chartDiv.innerHTML = '';
-                months.forEach((m, i) => {
+                for (let i = 0; i < 6; i++) {
+                    const idx = (currentMonth - 5 + i + 12) % 12;
                     const div = document.createElement('div');
                     div.className = 'text-center';
                     const bar = document.createElement('div');
                     bar.style.cssText =
                         `height:${parseInt(monthData[i])/60}px;background:#b388ff;border-radius:4px 4px 0 0;width:100%;max-height:120px;min-height:8px;`;
                     div.innerHTML =
-                        `<div style="height:120px;display:flex;flex-direction:column-reverse;align-items:center;">${bar.outerHTML}</div><div style="font-size:0.65rem;color:#8892b0;">${m}</div><div style="font-size:0.65rem;">₱${monthData[i]}</div>`;
+                        `<div style="height:120px;display:flex;flex-direction:column-reverse;align-items:center;">${bar.outerHTML}</div><div style="font-size:0.65rem;color:#8892b0;">${months[idx]}</div><div style="font-size:0.65rem;">₱${monthData[i]}</div>`;
                     chartDiv.appendChild(div);
-                });
+                }
 
                 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
                 const dayData = days.map(() => (Math.random() * 2000).toFixed(0));
@@ -1526,12 +2096,12 @@
                     templates.splice(parseInt(this.dataset.delidx), 1);
                     updateStats();
                     saveToLocalStorage();
-                    if (firebaseReady && navigator.onLine) syncToFirebase();
+                    if (currentUser) pushDataToFirebase(currentUser.uid);
                 }));
             }
 
             // ================================================================
-            // 9. CALENDAR
+            // 12. CALENDAR
             // ================================================================
             function renderCalendar() {
                 const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September',
@@ -1563,7 +2133,8 @@
                     div.className = 'day';
                     if (d === today.getDate() && calMonth === today.getMonth() && calYear === today.getFullYear()) div
                         .classList.add('today');
-                    const dateKey = `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
+                    const dateKey =
+                    `${calYear}-${String(calMonth+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`;
                     if (calEvents[dateKey]) div.classList.add('event');
                     div.textContent = d;
                     div.dataset.date = dateKey;
@@ -1605,7 +2176,7 @@
             });
 
             // ================================================================
-            // 10. CALCULATOR (UPDATED: grams to kg, minutes, ₱1/g, ₱0.80/min electricity)
+            // 13. CALCULATOR
             // ================================================================
             function calculate() {
                 const matCostPerGram = parseFloat(document.getElementById('materialCost').value) || 1.00;
@@ -1615,31 +2186,18 @@
                 const margin = parseFloat(document.getElementById('profitMargin').value) || 0;
                 const discount = parseFloat(document.getElementById('bulkDiscount').value) || 0;
 
-                // Filament usage: assume 0.5g per minute of print time (typical for 3D printing)
                 const gramsUsed = minutes * 0.5;
-                filamentUsedKg = gramsUsed / 1000; // convert to kg
+                filamentUsedKg = gramsUsed / 1000;
 
-                // Material: ₱1 per gram × grams used
                 const material = matCostPerGram * gramsUsed;
-
-                // Labor: ₱2.50 per minute (150 per hour / 60)
                 const labor = minutes * 2.50;
-
-                // Machine: ₱0.25 per minute (configurable)
                 const machine = minutes * depPerMin;
-
-                // Electricity: ₱0.80 per minute (fixed)
                 const electricity = minutes * 0.80;
-
-                // Total cost
                 const totalCost = material + labor + machine + electricity + overhead;
-
-                // Discounted price with profit margin
                 const discounted = totalCost * (1 + margin / 100) * (1 - discount / 100);
                 const profit = discounted - totalCost;
-                const profitPercent = totalCost > 0 ? (profit / totalCost) * 100 : 0;
+                const profitPercent = totalCost > 0 ? (profit / totalCost * 100) : 0;
 
-                // Update UI
                 document.getElementById('matVal').textContent = '₱' + material.toFixed(2);
                 document.getElementById('laborVal').textContent = '₱' + labor.toFixed(2);
                 document.getElementById('machineVal').textContent = '₱' + machine.toFixed(2);
@@ -1680,7 +2238,7 @@
                     calEvents[dateKey].push(name + ' (' + filamentUsedKg.toFixed(2) + 'kg)');
 
                     saveToLocalStorage();
-                    if (firebaseReady && navigator.onLine) syncToFirebase();
+                    if (currentUser) pushDataToFirebase(currentUser.uid);
                     refreshAllUI();
                 }
             }
@@ -1698,7 +2256,7 @@
             }
 
             // ================================================================
-            // 11. NAVIGATION
+            // 14. NAVIGATION
             // ================================================================
             const menuButtons = document.querySelectorAll('.menu-nav button');
             const pages = document.querySelectorAll('.page');
@@ -1722,7 +2280,7 @@
             });
 
             // ================================================================
-            // 12. EVENT BINDINGS
+            // 15. EVENT BINDINGS
             // ================================================================
 
             // Calculator
@@ -1782,7 +2340,7 @@
                 });
                 updateStats();
                 saveToLocalStorage();
-                if (firebaseReady && navigator.onLine) syncToFirebase();
+                if (currentUser) pushDataToFirebase(currentUser.uid);
             });
 
             document.getElementById('loadTemplateBtn').addEventListener('click', function() {
@@ -1808,7 +2366,7 @@
                 updateInventory();
                 updateStats();
                 saveToLocalStorage();
-                if (firebaseReady && navigator.onLine) syncToFirebase();
+                if (currentUser) pushDataToFirebase(currentUser.uid);
             });
 
             // Customers
@@ -1822,7 +2380,7 @@
                     updateCustomers();
                     updateStats();
                     saveToLocalStorage();
-                    if (firebaseReady && navigator.onLine) syncToFirebase();
+                    if (currentUser) pushDataToFirebase(currentUser.uid);
                     document.getElementById('custName').value = '';
                     document.getElementById('custContact').value = '';
                 } else {
@@ -1848,7 +2406,7 @@
 
                 invoices.push({ number, customer, desc, qty, price, total });
                 saveToLocalStorage();
-                if (firebaseReady && navigator.onLine) syncToFirebase();
+                if (currentUser) pushDataToFirebase(currentUser.uid);
             });
 
             // Payments
@@ -1863,7 +2421,7 @@
                 updatePayments();
                 updateStats();
                 saveToLocalStorage();
-                if (firebaseReady && navigator.onLine) syncToFirebase();
+                if (currentUser) pushDataToFirebase(currentUser.uid);
             });
 
             // History
@@ -1877,91 +2435,131 @@
                     updateReports();
                     renderCalendar();
                     saveToLocalStorage();
-                    if (firebaseReady && navigator.onLine) syncToFirebase();
+                    if (currentUser) pushDataToFirebase(currentUser.uid);
                 }
             });
 
             // Sync bar
             document.getElementById('syncNowBtn').addEventListener('click', function() {
+                if (!currentUser) {
+                    alert('Please login to sync to the cloud.');
+                    return;
+                }
                 if (!navigator.onLine) {
                     alert('You are offline. Please connect to the internet to sync.');
                     return;
                 }
-                if (!firebaseReady) {
-                    alert('Firebase is not configured. Please add your Firebase config to enable cloud sync.');
-                    return;
-                }
-                syncToFirebase().then(() => refreshAllUI());
+                updateSyncStatus('syncing', 'Syncing...');
+                pushDataToFirebase(currentUser.uid);
+                setTimeout(function() {
+                    refreshAllUI();
+                }, 1000);
             });
 
-            document.getElementById('exportJsonBtn').addEventListener('click', exportJSON);
+            document.getElementById('exportJsonBtn').addEventListener('click', function() {
+                const data = {
+                    orders,
+                    customers,
+                    customerContacts,
+                    filaments,
+                    templates,
+                    payments,
+                    invoices,
+                    calEvents,
+                    exportedAt: new Date().toISOString(),
+                    version: '1.0',
+                    user: currentUser ? currentUser.email : 'offline'
+                };
+                const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download =
+                    `kowalzki_backup_${currentUser ? currentUser.email : 'offline'}_${new Date().toISOString().slice(0,10)}.json`;
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+
             document.getElementById('importJsonBtn').addEventListener('click', function() {
                 document.getElementById('fileInput').click();
             });
             document.getElementById('fileInput').addEventListener('change', function(e) {
                 if (this.files && this.files[0]) {
-                    importJSON(this.files[0]);
+                    const reader = new FileReader();
+                    reader.onload = function(ev) {
+                        try {
+                            const data = JSON.parse(ev.target.result);
+                            if (data.orders) orders = data.orders;
+                            if (data.customers) customers = data.customers;
+                            if (data.customerContacts) customerContacts = data.customerContacts;
+                            if (data.filaments) filaments = data.filaments;
+                            if (data.templates) templates = data.templates;
+                            if (data.payments) payments = data.payments;
+                            if (data.invoices) invoices = data.invoices;
+                            if (data.calEvents) calEvents = data.calEvents;
+                            saveToLocalStorage();
+                            if (currentUser) pushDataToFirebase(currentUser.uid);
+                            refreshAllUI();
+                            updateSyncStatus('online', '✅ Data imported');
+                        } catch (err) {
+                            alert('❌ Invalid JSON file: ' + err.message);
+                        }
+                    };
+                    reader.readAsText(this.files[0]);
                 }
                 this.value = '';
             });
 
-            // ================================================================
-            // 13. INITIALIZATION
-            // ================================================================
-            async function init() {
-                const hasLocal = loadFromLocalStorage();
+            // Update profile
+            document.getElementById('updateProfileBtn').addEventListener('click', function() {
+                if (!currentUser) return alert('Please login first.');
+                const name = document.getElementById('accName').value.trim();
+                if (!name) return alert('Please enter your name');
 
-                if (firebaseReady && navigator.onLine) {
-                    updateSyncStatus('syncing', 'Connecting to cloud...');
-                    const loaded = await loadFromFirebase();
-                    if (loaded) {
-                        refreshAllUI();
-                        updateSyncStatus('online', '✅ Synced to cloud');
-                    } else if (hasLocal) {
-                        updateSyncStatus('offline', 'Using local data');
-                    }
-                } else if (hasLocal) {
-                    updateSyncStatus('offline', 'Offline mode — using local data');
-                } else {
-                    // Seed data
-                    orders.push({ job: 'Dragon V2', totalCost: 1250, discountedPrice: 1750, customer: 'Juan Dela Cruz',
-                        filament: 'PLA - Red', filamentUsed: 0.12, date: '2026-03-20' });
-                    orders.push({ job: 'Bust', totalCost: 780, discountedPrice: 1092, customer: 'Maria Santos',
-                        filament: 'PLA - Green', filamentUsed: 0.08, date: '2026-03-22' });
-                    orders.push({ job: 'Helmet', totalCost: 2100, discountedPrice: 2940, customer: 'Walk-in',
-                        filament: 'PLA - Black', filamentUsed: 0.20, date: '2026-03-23' });
-                    payments.push({ invoice: 'INV-001', customer: 'Juan Dela Cruz', amount: 1250, method: 'Cash',
-                        status: 'Paid' });
-                    payments.push({ invoice: 'INV-002', customer: 'Maria Santos', amount: 780, method: 'GCash',
-                        status: 'Pending' });
-                    calEvents['2026-03-20'] = ['Dragon V2 (0.12kg)'];
-                    calEvents['2026-03-22'] = ['Bust (0.08kg)'];
-                    calEvents['2026-03-23'] = ['Helmet (0.20kg)'];
-                    saveToLocalStorage();
-                    refreshAllUI();
-                    updateSyncStatus('online', 'Ready');
-                }
-
-                refreshAllUI();
-                updateLastSyncTime();
-
-                window.addEventListener('online', () => {
-                    updateSyncStatus('syncing', 'Back online — syncing...');
-                    if (firebaseReady) {
-                        loadFromFirebase().then(() => refreshAllUI());
-                    }
+                db.collection('users').doc(currentUser.uid).update({
+                    name: name
+                }).then(function() {
+                    currentUserData = { name: name };
+                    alert('✅ Profile updated successfully!');
+                }).catch(function(err) {
+                    alert('❌ Error updating profile: ' + err.message);
                 });
-                window.addEventListener('offline', () => {
-                    updateSyncStatus('offline', 'Offline — using local data');
-                });
+            });
 
-                setTimeout(() => {
-                    const sel = document.getElementById('filamentSelect');
-                    if (sel && sel.options.length > 1) sel.selectedIndex = 1;
-                }, 200);
+            // ================================================================
+            // 16. ENTER KEY SUPPORT
+            // ================================================================
+            loginEmail.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') loginBtn.click();
+            });
+            loginPassword.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') loginBtn.click();
+            });
+            signupName.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') signupBtn.click();
+            });
+            signupEmail.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') signupBtn.click();
+            });
+            signupPassword.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') signupBtn.click();
+            });
+            resetEmail.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter') resetPasswordBtn.click();
+            });
+
+            // ================================================================
+            // 17. INITIALIZATION
+            // ================================================================
+
+            initAuth();
+
+            if (!firebaseReady) {
+                console.log('ℹ️ Firebase not ready — running in offline mode');
             }
 
-            init();
+            console.log('🚀 Kowalzki Studio Multi-User Edition loaded with Forgot Password');
+
         })();
     </script>
 
