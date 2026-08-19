@@ -2545,6 +2545,15 @@
 
             initAuth();
 
+            // Register service worker (enables "Install App" + offline support)
+            if ('serviceWorker' in navigator) {
+                window.addEventListener('load', function() {
+                    navigator.serviceWorker.register('./sw.js')
+                        .then(function(reg) { console.log('✅ Service worker registered', reg.scope); })
+                        .catch(function(err) { console.warn('⚠️ Service worker registration failed:', err); });
+                });
+            }
+
             if (!firebaseReady) {
                 console.log('ℹ️ Firebase not ready — running in offline mode');
             }
