@@ -1243,14 +1243,12 @@
             // 1. 🔥 FIREBASE CONFIGURATION (REPLACE WITH YOUR ACTUAL CONFIG)
             // ================================================================
             const firebaseConfig = {
-  apiKey: "AIzaSyDGqIqJXas13ZCVgNUbRo2nPoDXQL394tQ",
-  authDomain: "d-calculator-5f6dd.firebaseapp.com",
-  projectId: "d-calculator-5f6dd",
-  storageBucket: "d-calculator-5f6dd.firebasestorage.app",
-  messagingSenderId: "243898320546",
-  appId: "1:243898320546:web:ce69aa5287093509f2b9fb",
-};
-
+                apiKey: "AIzaSyDGqIqJXas13ZCVgNUbRo2nPoDXQL394tQ",
+                authDomain: "d-calculator-5f6dd.firebaseapp.com",
+                projectId: "d-calculator-5f6dd",
+                storageBucket: "d-calculator-5f6dd.firebasestorage.app",
+                messagingSenderId: "243898320546",
+                appId: "1:243898320546:web:ce69aa5287093509f2b9fb"
             };
 
             // ================================================================
@@ -1401,7 +1399,7 @@
                 loginBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Logging in...';
 
                 auth.signInWithEmailAndPassword(email, password)
-                    .then(function(userCredential) {
+                    .then(function() {
                         showAuthSuccess('✅ Logged in successfully!');
                         loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
                         loginBtn.disabled = false;
@@ -1410,8 +1408,7 @@
                         let msg = error.message;
                         if (error.code === 'auth/user-not-found') msg = 'No account found with this email.';
                         if (error.code === 'auth/wrong-password') msg = 'Incorrect password. Please try again.';
-                        if (error.code === 'auth/too-many-requests') msg =
-                            'Too many failed attempts. Please try again later.';
+                        if (error.code === 'auth/too-many-requests') msg = 'Too many failed attempts. Please try again later.';
                         showAuthError('❌ ' + msg);
                         loginBtn.innerHTML = '<i class="fas fa-sign-in-alt"></i> Login';
                         loginBtn.disabled = false;
@@ -1449,7 +1446,7 @@
                             return user;
                         });
                     })
-                    .then(function(user) {
+                    .then(function() {
                         showSignupSuccess('✅ Account created successfully!');
                         signupBtn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account';
                         signupBtn.disabled = false;
@@ -1464,10 +1461,8 @@
                     })
                     .catch(function(error) {
                         let msg = error.message;
-                        if (error.code === 'auth/email-already-in-use') msg =
-                            'This email is already registered. Please login.';
-                        if (error.code === 'auth/weak-password') msg =
-                            'Password is too weak. Use at least 6 characters.';
+                        if (error.code === 'auth/email-already-in-use') msg = 'This email is already registered. Please login.';
+                        if (error.code === 'auth/weak-password') msg = 'Password is too weak. Use at least 6 characters.';
                         showSignupError('❌ ' + msg);
                         signupBtn.innerHTML = '<i class="fas fa-user-plus"></i> Create Account';
                         signupBtn.disabled = false;
@@ -1489,8 +1484,7 @@
 
                 auth.sendPasswordResetEmail(email)
                     .then(function() {
-                        showResetSuccess('✅ Password reset link sent to ' + email +
-                            '. Check your inbox.');
+                        showResetSuccess('✅ Password reset link sent to ' + email + '. Check your inbox.');
                         resetPasswordBtn.innerHTML = '<i class="fas fa-envelope"></i> Send Reset Link';
                         resetPasswordBtn.disabled = false;
                         setTimeout(function() {
@@ -1503,8 +1497,7 @@
                     })
                     .catch(function(error) {
                         let msg = error.message;
-                        if (error.code === 'auth/user-not-found') msg =
-                            'No account found with this email address.';
+                        if (error.code === 'auth/user-not-found') msg = 'No account found with this email address.';
                         showResetError('❌ ' + msg);
                         resetPasswordBtn.innerHTML = '<i class="fas fa-envelope"></i> Send Reset Link';
                         resetPasswordBtn.disabled = false;
@@ -1524,16 +1517,13 @@
 
                     auth.sendPasswordResetEmail(email)
                         .then(function() {
-                            alert('✅ Password reset link sent to ' + email +
-                                '. Check your inbox.');
-                            resetPasswordBtnAccount.innerHTML =
-                                '<i class="fas fa-key"></i> Reset Password';
+                            alert('✅ Password reset link sent to ' + email + '. Check your inbox.');
+                            resetPasswordBtnAccount.innerHTML = '<i class="fas fa-key"></i> Reset Password';
                             resetPasswordBtnAccount.disabled = false;
                         })
                         .catch(function(error) {
                             alert('❌ Error: ' + error.message);
-                            resetPasswordBtnAccount.innerHTML =
-                                '<i class="fas fa-key"></i> Reset Password';
+                            resetPasswordBtnAccount.innerHTML = '<i class="fas fa-key"></i> Reset Password';
                             resetPasswordBtnAccount.disabled = false;
                         });
                 }
@@ -1660,8 +1650,7 @@
                                     const data = doc.data();
                                     if (data.orders) orders = data.orders;
                                     if (data.customers) customers = data.customers;
-                                    if (data.customerContacts) customerContacts = data
-                                    .customerContacts;
+                                    if (data.customerContacts) customerContacts = data.customerContacts;
                                     if (data.filaments) filaments = data.filaments;
                                     if (data.templates) templates = data.templates;
                                     if (data.payments) payments = data.payments;
