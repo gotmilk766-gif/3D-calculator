@@ -1208,21 +1208,37 @@
                         <div style="margin-top:10px; background:#0c0f19; border-radius:12px; padding:10px; border:1px solid #262b3d; font-size:0.75rem; color:#8892b0;">
                             <strong style="color:#eef2ff;">Cloud Account:</strong><br />
                             • Your data syncs across all devices<br />
-                            • Each user has their own private storage<br />
+                            • Owners can invite staff to share one live studio<br />
                             • Password reset via email verification
                         </div>
                         <div style="margin-top:4px; color:#7f89aa; font-size:0.65rem;">Kowalzki Studio — Multi-User Edition</div>
                     </div>
+                    <div class="card">
+                        <div class="card-title"><i class="fas fa-users"></i> Team</div>
+                        <div id="teamOwnerOnly" style="display:none;">
+                            <div class="input-group"><label>INVITE STAFF BY EMAIL</label><input type="email" id="inviteEmailInput" placeholder="staff@example.com" /></div>
+                            <button class="btn-primary" id="inviteStaffBtn"><i class="fas fa-paper-plane"></i> INVITE</button>
+                            <div id="inviteStatusMsg" style="font-size:0.75rem; margin-top:6px;"></div>
+                        </div>
+                        <div id="teamStaffOnlyNotice" style="display:none; font-size:0.75rem; color:#8892b0;">
+                            You're viewing a shared studio you were invited to. Only the owner can invite more people.
+                        </div>
+                        <div style="margin-top:10px;">
+                            <div style="font-size:0.75rem; color:#8892b0; margin-bottom:6px;">Members with access:</div>
+                            <div id="studioMembersList"></div>
+                        </div>
+                    </div>
                 </div>
+
                 <div>
                     <div class="card">
                         <div class="card-title"><i class="fas fa-shield-alt"></i> Security &amp; Access</div>
                         <div style="font-size:0.8rem; color:#8892b0;"><strong style="color:#eef2ff;">Multi-User Features</strong></div>
                         <ul style="list-style:none; font-size:0.75rem; color:#8892b0; margin-top:6px;">
-                            <li>• Each user has their own private data</li>
+                            <li>• Studio owners can invite staff by email</li>
+                            <li>• Invited staff see and edit the same live data</li>
                             <li>• All data stored securely in the cloud</li>
-                            <li>• Syncs automatically across all devices</li>
-                            <li>• Create multiple accounts for your team</li>
+                            <li>• Syncs automatically across all devices, in real time</li>
                         </ul>
                         <div style="margin-top:12px; background:#0c0f19; border-radius:12px; padding:10px; border:1px solid #262b3d;">
                             <strong style="color:#eef2ff;">Security Tips:</strong><br />
@@ -1263,6 +1279,9 @@
             let firebaseReady = false;
             let currentUser = null;
             let currentUserData = null;
+            let activeStudioId = null; // the studio doc this account reads/writes —
+                                        // equals the owner's uid, or an invited
+                                        // staff member's assigned studio.
             let authUnsubscribe = null;
             let dbUnsubscribe = null;
             let dbUnsubscribeOrders = null;
@@ -1544,8 +1563,101 @@
             });
 
             // ================================================================
-            // 5. FIREBASE REAL-TIME DATA SYNC
+            // 5b. MULTI-USER STUDIO SHARING
+            //
+            // Data model:
+            //  - studios/{studioId}            main studio doc (id = owner's uid)
+            //  - studios/{studioId}/members/{uid}   one doc per person with access
+            //  - studioInvites/{emailLowercased}    lookup table: "this email
+            //        belongs to studioId X with role Y" — checked once at login
+            //        so a staff member's account gets pointed at the OWNER's
+            //        studio instead of their own empty one.
+            //
+            // IMPORTANT: this client code only decides *which* studio doc to
+            // read/write. Firestore Security Rules (configured separately in
+            // the Firebase console, not in this file) are what actually make
+            // that access safe/legal. See the rules block shared alongside
+            // this app.
             // ================================================================
+
+            function resolveActiveStudioId(user) {
+                if (!firebaseReady || !db || !user) return Promise.resolve(user ? user.uid : null);
+                const emailKey = (user.email || '').toLowerCase().trim();
+                if (!emailKey) return Promise.resolve(user.uid);
+
+                return db.collection('studioInvites').doc(emailKey).get()
+                    .then(function(inviteDoc) {
+                        if (inviteDoc.exists && inviteDoc.data().studioId) {
+                            return inviteDoc.data().studioId;
+                        }
+                        return user.uid; // no invite found — they own their own studio
+                    })
+                    .catch(function(err) {
+                        console.warn('⚠️ Could not resolve invite, defaulting to own studio:', err);
+                        return user.uid;
+                    });
+            }
+
+            // Records that this uid has access to studioId, so Firestore rules
+            // (which check for the existence of this doc) allow reads/writes,
+            // and so the owner can see who's on their team.
+            function ensureMembership(studioId, user, role) {
+                if (!firebaseReady || !db || !studioId || !user) return;
+                db.collection('studios').doc(studioId).collection('members').doc(user.uid).set({
+                    email: user.email || '',
+                    role: role,
+                    name: (currentUserData && currentUserData.name) || '',
+                    joinedAt: firebase.firestore.FieldValue.serverTimestamp()
+                }, { merge: true }).catch(function(err) {
+                    console.warn('⚠️ Could not write membership doc:', err);
+                });
+            }
+
+            // Owner-only: invite a staff email to join THIS studio. Staff still
+            // need to sign up / log in with that exact email — this just makes
+            // sure that when they do, they land in the shared studio instead of
+            // getting their own empty one.
+            function inviteStaffByEmail(email) {
+                if (!firebaseReady || !db || !currentUser) {
+                    return Promise.reject(new Error('Not signed in.'));
+                }
+                if (activeStudioId !== currentUser.uid) {
+                    return Promise.reject(new Error('Only the studio owner can invite staff.'));
+                }
+                const emailKey = (email || '').toLowerCase().trim();
+                if (!emailKey || !emailKey.includes('@')) {
+                    return Promise.reject(new Error('Enter a valid email address.'));
+                }
+                return db.collection('studioInvites').doc(emailKey).set({
+                    studioId: currentUser.uid,
+                    role: 'staff',
+                    invitedBy: currentUser.email || currentUser.uid,
+                    invitedAt: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            }
+
+            function loadStudioMembers() {
+                const list = document.getElementById('studioMembersList');
+                if (!list || !firebaseReady || !db || !activeStudioId) return;
+                db.collection('studios').doc(activeStudioId).collection('members').get()
+                    .then(function(snapshot) {
+                        list.innerHTML = '';
+                        if (snapshot.empty) {
+                            list.innerHTML = '<div class="text-muted" style="font-size:0.75rem;">No team members yet.</div>';
+                            return;
+                        }
+                        snapshot.forEach(function(doc) {
+                            const m = doc.data();
+                            const row = document.createElement('div');
+                            row.className = 'stock-item';
+                            row.innerHTML = `<span>${m.email || doc.id}${m.role === 'owner' ? ' (Owner)' : ''}</span><span>${m.role || 'staff'}</span>`;
+                            list.appendChild(row);
+                        });
+                    })
+                    .catch(function(err) { console.warn('⚠️ Could not load members:', err); });
+            }
+
+
 
             function startDataSync(userId) {
                 if (!firebaseReady || !db) return;
@@ -1834,8 +1946,15 @@
                                 console.warn('⚠️ Could not load user profile:', err);
                             });
 
-                        const userDocRef = db.collection('studios').doc(user.uid);
-                        userDocRef.get()
+                        resolveActiveStudioId(user).then(function(studioId) {
+                            activeStudioId = studioId;
+                            const role = (studioId === user.uid) ? 'owner' : 'staff';
+                            ensureMembership(studioId, user, role);
+                            loadStudioMembers();
+                            updateTeamPanelVisibility();
+
+                            const userDocRef = db.collection('studios').doc(studioId);
+                            userDocRef.get()
                             .then(function(doc) {
                                 if (doc.exists) {
                                     const data = doc.data();
@@ -1847,24 +1966,28 @@
                                     if (data.calEvents) calEvents = data.calEvents;
                                     if (data.userName) currentUserData = { name: data.userName };
                                     if (data.orders || data.payments) {
-                                        migrateLegacyOrdersPayments(user.uid, data.orders, data.payments);
+                                        migrateLegacyOrdersPayments(studioId, data.orders, data.payments);
                                     }
                                     saveToLocalStorage();
                                     refreshAllUI();
                                     updateSyncStatus('online', '✅ Loaded from cloud');
-                                } else {
+                                } else if (role === 'owner') {
                                     // Brand-new studio account: seed local defaults, then write
                                     // the meta doc + seed orders/payments as their own documents.
                                     seedDefaultData();
-                                    pushDataToFirebase(user.uid);
-                                    db.collection('studios').doc(user.uid).set({
+                                    pushDataToFirebase(studioId);
+                                    db.collection('studios').doc(studioId).set({
                                         filaments: filaments
                                     }, { merge: true }).catch(function(err) {
                                         console.warn('⚠️ Seed filaments error:', err);
                                     });
-                                    seedFirebaseSubcollections(user.uid);
+                                    seedFirebaseSubcollections(studioId);
                                     refreshAllUI();
                                     updateSyncStatus('online', '✅ Ready');
+                                } else {
+                                    // Invited staff whose owner hasn't created any data yet.
+                                    refreshAllUI();
+                                    updateSyncStatus('online', '✅ Connected to shared studio');
                                 }
                             })
                             .catch(function(err) {
@@ -1877,11 +2000,13 @@
                                 updateSyncStatus('offline', 'Using local data');
                             });
 
-                        startDataSync(user.uid);
+                            startDataSync(studioId);
+                        });
 
                     } else {
                         currentUser = null;
                         currentUserData = null;
+                        activeStudioId = null;
                         if (dbUnsubscribe) {
                             dbUnsubscribe();
                             dbUnsubscribe = null;
@@ -1999,14 +2124,14 @@
                     _savedAt: new Date().toISOString()
                 };
                 try {
-                    localStorage.setItem('kowalzki_data_' + (currentUser ? currentUser.uid : 'offline'), JSON.stringify(
+                    localStorage.setItem('kowalzki_data_' + (currentUser ? activeStudioId : 'offline'), JSON.stringify(
                     data));
                 } catch (e) { console.warn('⚠️ localStorage save error:', e); }
             }
 
             function loadFromLocalStorage() {
                 try {
-                    const key = 'kowalzki_data_' + (currentUser ? currentUser.uid : 'offline');
+                    const key = 'kowalzki_data_' + (currentUser ? activeStudioId : 'offline');
                     const raw = localStorage.getItem(key);
                     if (!raw) return false;
                     const data = JSON.parse(raw);
@@ -2103,7 +2228,7 @@
                             // the fix for the concurrent-edit bug where two people
                             // deducting stock at the same time could lose one of the
                             // deductions. Both deductions now always apply.
-                            db.collection('studios').doc(currentUser.uid).update({
+                            db.collection('studios').doc(activeStudioId).update({
                                 ['filaments.' + key]: firebase.firestore.FieldValue.increment(-dec)
                             }).catch(function(err) { console.warn('⚠️ Stock update error:', err); });
                         } else {
@@ -2156,7 +2281,7 @@
                         const payment = payments[idx];
                         const isOnline = !!(currentUser && firebaseReady && db && payment && payment.id);
                         if (isOnline) {
-                            db.collection('studios').doc(currentUser.uid).collection('payments').doc(payment.id)
+                            db.collection('studios').doc(activeStudioId).collection('payments').doc(payment.id)
                                 .delete()
                                 .catch(function(err) { console.warn('⚠️ Payment delete error:', err); });
                         } else {
@@ -2192,7 +2317,7 @@
                         tbody.appendChild(tr);
                     });
                 }
-                const totalRevenue = orders.reduce((s, o) => s + (o.totalCost || 0), 0);
+                const totalRevenue = orders.reduce((s, o) => s + (o.discountedPrice || o.totalCost || 0), 0);
                 const totalProfit = orders.reduce((s, o) => {
                     const profit = (o.discountedPrice || o.totalCost || 0) - (o.totalCost || 0);
                     return s + profit;
@@ -2203,8 +2328,8 @@
             }
 
             function updateReports() {
-                const totalRevenue = orders.reduce((s, o) => s + (o.totalCost || 0), 0);
-                const totalCOGS = orders.reduce((s, o) => s + ((o.totalCost || 0) * 0.4), 0);
+                const totalRevenue = orders.reduce((s, o) => s + (o.discountedPrice || o.totalCost || 0), 0);
+                const totalCOGS = orders.reduce((s, o) => s + (o.totalCost || 0), 0);
                 const totalProfit = totalRevenue - totalCOGS;
                 const margin = totalRevenue > 0 ? (totalProfit / totalRevenue * 100) : 0;
                 const avgOrder = orders.length > 0 ? totalRevenue / orders.length : 0;
@@ -2227,7 +2352,7 @@
             }
 
             function updateDashboard() {
-                const totalRevenue = orders.reduce((s, o) => s + (o.totalCost || 0), 0);
+                const totalRevenue = orders.reduce((s, o) => s + (o.discountedPrice || o.totalCost || 0), 0);
                 const totalProfit = orders.reduce((s, o) => {
                     const profit = (o.discountedPrice || o.totalCost || 0) - (o.totalCost || 0);
                     return s + profit;
@@ -2238,39 +2363,58 @@
                 document.getElementById('dashTotalProfit').textContent = '₱' + totalProfit.toFixed(2);
                 document.getElementById('dashAvgMargin').textContent = avgMargin.toFixed(1) + '%';
 
+                // Real monthly revenue for the last 6 calendar months, built from
+                // actual order dates/prices — no random placeholder data.
                 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-                const currentMonth = new Date().getMonth();
-                const monthData = [];
-                for (let i = 0; i < 6; i++) {
-                    const idx = (currentMonth - 5 + i + 12) % 12;
-                    monthData.push((Math.random() * 5000).toFixed(0));
+                const now = new Date();
+                const monthKeys = [];
+                for (let i = 5; i >= 0; i--) {
+                    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+                    monthKeys.push({ key: d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'), label: months[d.getMonth()] });
                 }
+                const monthData = monthKeys.map(function(mk) {
+                    return orders.reduce(function(sum, o) {
+                        const odate = (o.date || '');
+                        return odate.slice(0, 7) === mk.key ? sum + (o.discountedPrice || o.totalCost || 0) : sum;
+                    }, 0);
+                });
+                const maxMonth = Math.max(1, ...monthData);
                 const chartDiv = document.getElementById('monthlyRevenueChart');
                 chartDiv.innerHTML = '';
-                for (let i = 0; i < 6; i++) {
-                    const idx = (currentMonth - 5 + i + 12) % 12;
+                monthKeys.forEach(function(mk, i) {
                     const div = document.createElement('div');
                     div.className = 'text-center';
                     const bar = document.createElement('div');
+                    const h = monthData[i] > 0 ? Math.max(8, (monthData[i] / maxMonth) * 120) : 4;
                     bar.style.cssText =
-                        `height:${parseInt(monthData[i])/60}px;background:#b388ff;border-radius:4px 4px 0 0;width:100%;max-height:120px;min-height:8px;`;
+                        `height:${h}px;background:#b388ff;border-radius:4px 4px 0 0;width:100%;max-height:120px;min-height:4px;`;
                     div.innerHTML =
-                        `<div style="height:120px;display:flex;flex-direction:column-reverse;align-items:center;">${bar.outerHTML}</div><div style="font-size:0.65rem;color:#8892b0;">${months[idx]}</div><div style="font-size:0.65rem;">₱${monthData[i]}</div>`;
+                        `<div style="height:120px;display:flex;flex-direction:column-reverse;align-items:center;">${bar.outerHTML}</div><div style="font-size:0.65rem;color:#8892b0;">${mk.label}</div><div style="font-size:0.65rem;">₱${monthData[i].toFixed(0)}</div>`;
                     chartDiv.appendChild(div);
-                }
+                });
 
+                // Real revenue by day-of-week, aggregated across actual order history.
                 const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-                const dayData = days.map(() => (Math.random() * 2000).toFixed(0));
+                const dayData = days.map(function(_, i) {
+                    return orders.reduce(function(sum, o) {
+                        if (!o.date) return sum;
+                        const jsDay = new Date(o.date + 'T00:00:00').getDay(); // 0=Sun..6=Sat
+                        const mondayIndexed = (jsDay + 6) % 7; // 0=Mon..6=Sun
+                        return mondayIndexed === i ? sum + (o.discountedPrice || o.totalCost || 0) : sum;
+                    }, 0);
+                });
+                const maxDay = Math.max(1, ...dayData);
                 const weekDiv = document.getElementById('weeklyOrdersChart');
                 weekDiv.innerHTML = '';
                 days.forEach((d, i) => {
                     const div = document.createElement('div');
                     div.className = 'text-center';
                     const bar = document.createElement('div');
+                    const h = dayData[i] > 0 ? Math.max(6, (dayData[i] / maxDay) * 100) : 3;
                     bar.style.cssText =
-                        `height:${parseInt(dayData[i])/20}px;background:#6fcf97;border-radius:4px 4px 0 0;width:100%;max-height:100px;min-height:6px;`;
+                        `height:${h}px;background:#6fcf97;border-radius:4px 4px 0 0;width:100%;max-height:100px;min-height:3px;`;
                     div.innerHTML =
-                        `<div style="height:100px;display:flex;flex-direction:column-reverse;align-items:center;">${bar.outerHTML}</div><div style="font-size:0.65rem;color:#8892b0;">${d}</div><div style="font-size:0.65rem;">₱${dayData[i]}</div>`;
+                        `<div style="height:100px;display:flex;flex-direction:column-reverse;align-items:center;">${bar.outerHTML}</div><div style="font-size:0.65rem;color:#8892b0;">${d}</div><div style="font-size:0.65rem;">₱${dayData[i].toFixed(0)}</div>`;
                     weekDiv.appendChild(div);
                 });
 
@@ -2287,7 +2431,7 @@
 
             function updateStats() {
                 const total = orders.length;
-                const revenue = orders.reduce((sum, o) => sum + (o.totalCost || 0), 0);
+                const revenue = orders.reduce((sum, o) => sum + (o.discountedPrice || o.totalCost || 0), 0);
                 document.getElementById('statTotalOrders').textContent = total;
                 document.getElementById('statMonthlyRevenue').textContent = '₱' + revenue.toFixed(2);
                 let low = 0;
@@ -2326,7 +2470,7 @@
                     templates.splice(parseInt(this.dataset.delidx), 1);
                     updateStats();
                     saveToLocalStorage();
-                    if (currentUser) pushDataToFirebase(currentUser.uid);
+                    if (currentUser) pushDataToFirebase(activeStudioId);
                 }));
             }
 
@@ -2474,7 +2618,7 @@
                     const isOnline = !!(currentUser && firebaseReady && db);
 
                     if (isOnline) {
-                        const studioRef = db.collection('studios').doc(currentUser.uid);
+                        const studioRef = db.collection('studios').doc(activeStudioId);
 
                         // Each order is its own document — two people printing at the
                         // same time each get their own doc instead of racing to
@@ -2495,7 +2639,7 @@
 
                         // Meta-only push (calendar entry) — orders/payments/filaments
                         // are excluded from this, see pushDataToFirebase.
-                        pushDataToFirebase(currentUser.uid);
+                        pushDataToFirebase(activeStudioId);
                         // The orders/filaments listeners will refresh the UI once the
                         // writes above land; refresh now too so the calendar entry
                         // shows immediately without waiting on a round trip.
@@ -2614,7 +2758,7 @@
                 });
                 updateStats();
                 saveToLocalStorage();
-                if (currentUser) pushDataToFirebase(currentUser.uid);
+                if (currentUser) pushDataToFirebase(activeStudioId);
             });
 
             document.getElementById('loadTemplateBtn').addEventListener('click', function() {
@@ -2644,7 +2788,7 @@
                     // Atomic increment on the dotted field path — adds a new
                     // filament key or tops up an existing one without a
                     // read-then-write race against anyone else's stock change.
-                    db.collection('studios').doc(currentUser.uid).update({
+                    db.collection('studios').doc(activeStudioId).update({
                         ['filaments.' + name]: firebase.firestore.FieldValue.increment(qty)
                     }).catch(function(err) { console.warn('⚠️ Add filament error:', err); });
                 } else {
@@ -2666,7 +2810,7 @@
                     updateCustomers();
                     updateStats();
                     saveToLocalStorage();
-                    if (currentUser) pushDataToFirebase(currentUser.uid);
+                    if (currentUser) pushDataToFirebase(activeStudioId);
                     document.getElementById('custName').value = '';
                     document.getElementById('custContact').value = '';
                 } else {
@@ -2692,7 +2836,7 @@
 
                 invoices.push({ number, customer, desc, qty, price, total });
                 saveToLocalStorage();
-                if (currentUser) pushDataToFirebase(currentUser.uid);
+                if (currentUser) pushDataToFirebase(activeStudioId);
             });
 
             // Payments
@@ -2711,7 +2855,7 @@
                     const paymentData = Object.assign({}, payment, {
                         createdAt: firebase.firestore.FieldValue.serverTimestamp()
                     });
-                    db.collection('studios').doc(currentUser.uid).collection('payments').add(paymentData)
+                    db.collection('studios').doc(activeStudioId).collection('payments').add(paymentData)
                         .catch(function(err) { console.warn('⚠️ Payment save error:', err); });
                 } else {
                     payments.push(payment);
@@ -2730,14 +2874,14 @@
                         // Delete every order document instead of overwriting a shared
                         // array — a delete here can't silently erase an order someone
                         // else added a moment ago that this client hasn't seen yet.
-                        db.collection('studios').doc(currentUser.uid).collection('orders').get()
+                        db.collection('studios').doc(activeStudioId).collection('orders').get()
                             .then(function(snapshot) {
                                 const batch = db.batch();
                                 snapshot.docs.forEach(function(doc) { batch.delete(doc.ref); });
                                 return batch.commit();
                             })
                             .catch(function(err) { console.warn('⚠️ Clear history error:', err); });
-                        pushDataToFirebase(currentUser.uid);
+                        pushDataToFirebase(activeStudioId);
                     } else {
                         orders = [];
                         saveToLocalStorage();
@@ -2765,8 +2909,8 @@
                     return;
                 }
                 updateSyncStatus('syncing', 'Syncing...');
-                pullDataFromFirebase(currentUser.uid, function() {
-                    pushDataToFirebase(currentUser.uid);
+                pullDataFromFirebase(activeStudioId, function() {
+                    pushDataToFirebase(activeStudioId);
                     refreshAllUI();
                 });
             });
@@ -2779,7 +2923,7 @@
             document.addEventListener('visibilitychange', function() {
                 if (document.visibilityState === 'visible' && currentUser && firebaseReady) {
                     updateSyncStatus('syncing', 'Syncing...');
-                    pullDataFromFirebase(currentUser.uid);
+                    pullDataFromFirebase(activeStudioId);
                 }
             });
 
@@ -2832,9 +2976,9 @@
                                 // (unlike normal edits) it's allowed to wholesale replace
                                 // orders/payments and the filaments map.
                                 updateSyncStatus('syncing', 'Importing...');
-                                replaceFirebaseOrdersAndPayments(currentUser.uid, orders, payments)
+                                replaceFirebaseOrdersAndPayments(activeStudioId, orders, payments)
                                     .then(function() {
-                                        return db.collection('studios').doc(currentUser.uid).set({
+                                        return db.collection('studios').doc(activeStudioId).set({
                                             customers: customers,
                                             customerContacts: customerContacts,
                                             filaments: filaments,
@@ -2881,9 +3025,38 @@
                 });
             });
 
-            // ================================================================
-            // 16. ENTER KEY SUPPORT
-            // ================================================================
+            // Team / invite staff
+            const inviteStaffBtn = document.getElementById('inviteStaffBtn');
+            if (inviteStaffBtn) {
+                inviteStaffBtn.addEventListener('click', function() {
+                    const email = document.getElementById('inviteEmailInput').value;
+                    const statusEl = document.getElementById('inviteStatusMsg');
+                    statusEl.style.color = '#8892b0';
+                    statusEl.textContent = 'Sending invite...';
+                    inviteStaffByEmail(email)
+                        .then(function() {
+                            statusEl.style.color = '#6fcf97';
+                            statusEl.textContent = '✅ Invited! Ask them to sign up or log in with that exact email — they\'ll land in this shared studio automatically.';
+                            document.getElementById('inviteEmailInput').value = '';
+                        })
+                        .catch(function(err) {
+                            statusEl.style.color = '#ff6b6b';
+                            statusEl.textContent = '❌ ' + err.message;
+                        });
+                });
+            }
+
+            // Show the invite panel only to the studio owner; staff see a notice instead.
+            function updateTeamPanelVisibility() {
+                const ownerPanel = document.getElementById('teamOwnerOnly');
+                const staffNotice = document.getElementById('teamStaffOnlyNotice');
+                if (!ownerPanel || !staffNotice || !currentUser) return;
+                const isOwner = activeStudioId === currentUser.uid;
+                ownerPanel.style.display = isOwner ? 'block' : 'none';
+                staffNotice.style.display = isOwner ? 'none' : 'block';
+            }
+
+
             loginEmail.addEventListener('keypress', function(e) {
                 if (e.key === 'Enter') loginBtn.click();
             });
