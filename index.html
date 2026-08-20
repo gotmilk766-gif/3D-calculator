@@ -1570,6 +1570,45 @@
                 });
             }
 
+            // One-time forced PULL straight from the server (source: 'server' skips
+            // any stale local cache). Used by the manual Sync button and by the
+            // auto-resync-on-foreground handler, so a phone that missed a real-time
+            // update while backgrounded always gets the freshest cloud copy BEFORE
+            // it ever pushes its own (possibly outdated) local copy back up.
+            function pullDataFromFirebase(userId, callback) {
+                if (!firebaseReady || !db || !userId) {
+                    if (callback) callback(false);
+                    return;
+                }
+                db.collection('studios').doc(userId).get({ source: 'server' })
+                    .then(function(doc) {
+                        if (doc.exists) {
+                            const data = doc.data();
+                            if (data.orders) orders = data.orders;
+                            if (data.customers) customers = data.customers;
+                            if (data.customerContacts) customerContacts = data.customerContacts;
+                            if (data.filaments) filaments = data.filaments;
+                            if (data.templates) templates = data.templates;
+                            if (data.payments) payments = data.payments;
+                            if (data.invoices) invoices = data.invoices;
+                            if (data.calEvents) calEvents = data.calEvents;
+                            if (data.userName) currentUserData = { name: data.userName };
+
+                            lastSyncTime = Date.now();
+                            updateSyncStatus('online', '✅ Synced to cloud');
+                            updateLastSyncTime();
+                            saveToLocalStorage();
+                            refreshAllUI();
+                        }
+                        if (callback) callback(true);
+                    })
+                    .catch(function(error) {
+                        console.warn('⚠️ Pull error:', error);
+                        updateSyncStatus('error', 'Sync error: ' + error.message);
+                        if (callback) callback(false);
+                    });
+            }
+
             function pushDataToFirebase(userId) {
                 if (!firebaseReady || !db || !userId) return;
 
@@ -2430,7 +2469,11 @@
                 }
             });
 
-            // Sync bar
+            // Sync bar — manual "Sync" button.
+            // Pulls the freshest cloud copy FIRST, then pushes local state back up.
+            // This order matters: if this device missed a real-time update while
+            // backgrounded, pulling first prevents it from clobbering the other
+            // phone's newer changes with a stale local push.
             document.getElementById('syncNowBtn').addEventListener('click', function() {
                 if (!currentUser) {
                     alert('Please login to sync to the cloud.');
@@ -2441,10 +2484,22 @@
                     return;
                 }
                 updateSyncStatus('syncing', 'Syncing...');
-                pushDataToFirebase(currentUser.uid);
-                setTimeout(function() {
+                pullDataFromFirebase(currentUser.uid, function() {
+                    pushDataToFirebase(currentUser.uid);
                     refreshAllUI();
-                }, 1000);
+                });
+            });
+
+            // Auto-resync when the app returns to the foreground.
+            // Mobile browsers/PWAs suspend JS timers and can miss real-time
+            // Firestore events while backgrounded — this is the "delay" users see
+            // when they switch back to the app. Forcing a fresh pull the moment the
+            // page becomes visible again closes that gap without needing a manual tap.
+            document.addEventListener('visibilitychange', function() {
+                if (document.visibilityState === 'visible' && currentUser && firebaseReady) {
+                    updateSyncStatus('syncing', 'Syncing...');
+                    pullDataFromFirebase(currentUser.uid);
+                }
             });
 
             document.getElementById('exportJsonBtn').addEventListener('click', function() {
