@@ -850,8 +850,11 @@
                         <div class="calc-grid">
                             <div class="input-group"><label>JOB NAME</label><input type="text" id="jobName" value="Dragon V2" /></div>
                             <div class="input-group"><label>MATERIAL COST (PER GRAM)</label><input type="number" id="materialCost" value="1.00" step="0.01" /></div>
+                            <div class="input-group"><label>FILAMENT WEIGHT FROM SLICER (GRAMS)</label><input type="number" id="filamentWeight" placeholder="e.g. 125 (leave blank to estimate)" step="0.1" /></div>
                             <div class="input-group"><label>PRINT TIME (MINUTES)</label><input type="number" id="printTime" value="510" step="1" /></div>
                             <div class="input-group"><label>MACHINE DEP (P/MIN)</label><input type="number" id="machineDep" value="0.25" step="0.01" /></div>
+                            <div class="input-group"><label>LABOR RATE (P/MIN)</label><input type="number" id="laborRate" value="2.50" step="0.01" /></div>
+                            <div class="input-group"><label>ELECTRICITY RATE (P/MIN)</label><input type="number" id="electricityRate" value="0.80" step="0.01" /></div>
                             <div class="input-group"><label>OVERHEAD (P)</label><input type="number" id="overhead" value="80" /></div>
                             <div class="input-group"><label>DESIRED PROFIT MARGIN (%)</label><input type="number" id="profitMargin" value="40" /></div>
                         </div>
@@ -906,6 +909,7 @@
                         <div style="margin-top:10px;">
                             <div class="stat-item"><span class="stat-label">Total Orders</span><span class="stat-number" id="statTotalOrders">0</span></div>
                             <div class="stat-item"><span class="stat-label">Monthly Revenue</span><span class="stat-number" id="statMonthlyRevenue">₱0.00</span></div>
+                            <div class="stat-item"><span class="stat-label">Low Stock</span><span class="stat-number" id="statLowStock">0.00 kg</span></div>
                             <div class="stat-item"><span class="stat-label">Monthly Goal</span><span class="stat-number" style="color:#f2c94a;">₱50,000</span></div>
                         </div>
                         <div class="filament-stock">
@@ -1261,6 +1265,9 @@
             let currentUserData = null;
             let authUnsubscribe = null;
             let dbUnsubscribe = null;
+            let dbUnsubscribeOrders = null;
+            let dbUnsubscribePayments = null;
+            let legacyMigrationDone = false;
 
             try {
                 firebase.initializeApp(firebaseConfig);
@@ -1545,18 +1552,29 @@
 
                 const userDocRef = db.collection('studios').doc(userId);
 
+                // NOTE: orders and payments are NOT read from this document anymore.
+                // They live in their own real-time subcollections (see
+                // startOrdersPaymentsSync below) so that two people adding/deleting
+                // items at the same time each get their own document instead of
+                // overwriting a shared array field.
                 dbUnsubscribe = userDocRef.onSnapshot(function(doc) {
                     if (doc.exists) {
                         const data = doc.data();
-                        if (data.orders) orders = data.orders;
                         if (data.customers) customers = data.customers;
                         if (data.customerContacts) customerContacts = data.customerContacts;
                         if (data.filaments) filaments = data.filaments;
                         if (data.templates) templates = data.templates;
-                        if (data.payments) payments = data.payments;
                         if (data.invoices) invoices = data.invoices;
                         if (data.calEvents) calEvents = data.calEvents;
                         if (data.userName) currentUserData = { name: data.userName };
+
+                        // Self-healing migration: if this account still has the old
+                        // array-based orders/payments fields (e.g. never migrated,
+                        // or an old cached client pushed them back), move them into
+                        // the subcollections once and strip them from this document.
+                        if (data.orders || data.payments) {
+                            migrateLegacyOrdersPayments(userId, data.orders, data.payments);
+                        }
 
                         lastSyncTime = Date.now();
                         updateSyncStatus('online', '✅ Synced to cloud');
@@ -1567,6 +1585,130 @@
                 }, function(error) {
                     console.warn('⚠️ Firestore sync error:', error);
                     updateSyncStatus('error', 'Sync error: ' + error.message);
+                });
+
+                startOrdersPaymentsSync(userId);
+            }
+
+            // Real-time listeners on the item-level orders/payments subcollections.
+            // Each order/payment is its own Firestore document
+            // (studios/{userId}/orders/{orderId}), so concurrent adds/deletes from
+            // different people never clobber each other the way a single shared
+            // array field did.
+            function startOrdersPaymentsSync(userId) {
+                if (!firebaseReady || !db) return;
+
+                if (dbUnsubscribeOrders) { dbUnsubscribeOrders(); dbUnsubscribeOrders = null; }
+                if (dbUnsubscribePayments) { dbUnsubscribePayments(); dbUnsubscribePayments = null; }
+
+                const ordersRef = db.collection('studios').doc(userId).collection('orders').orderBy('createdAt', 'asc');
+                dbUnsubscribeOrders = ordersRef.onSnapshot(function(snapshot) {
+                    orders = snapshot.docs.map(function(doc) {
+                        return Object.assign({ id: doc.id }, doc.data());
+                    });
+                    lastSyncTime = Date.now();
+                    updateLastSyncTime();
+                    saveToLocalStorage();
+                    refreshAllUI();
+                }, function(error) {
+                    console.warn('⚠️ Orders sync error:', error);
+                });
+
+                const paymentsRef = db.collection('studios').doc(userId).collection('payments').orderBy('createdAt',
+                    'asc');
+                dbUnsubscribePayments = paymentsRef.onSnapshot(function(snapshot) {
+                    payments = snapshot.docs.map(function(doc) {
+                        return Object.assign({ id: doc.id }, doc.data());
+                    });
+                    lastSyncTime = Date.now();
+                    updateLastSyncTime();
+                    saveToLocalStorage();
+                    refreshAllUI();
+                }, function(error) {
+                    console.warn('⚠️ Payments sync error:', error);
+                });
+            }
+
+            // One-time move of legacy array-based orders/payments (from the old
+            // "one big document" design) into their own subcollection documents,
+            // then removes the array fields from the studio document so nothing
+            // ever reads or writes them as a blob again.
+            function migrateLegacyOrdersPayments(userId, legacyOrders, legacyPayments) {
+                if (legacyMigrationDone) return;
+                if ((!legacyOrders || !legacyOrders.length) && (!legacyPayments || !legacyPayments.length)) return;
+                legacyMigrationDone = true;
+
+                console.log('🔄 Migrating legacy orders/payments to item-level documents...');
+                const studioRef = db.collection('studios').doc(userId);
+                const batch = db.batch();
+
+                (legacyOrders || []).forEach(function(o) {
+                    const data = Object.assign({}, o);
+                    delete data.id;
+                    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                    batch.set(studioRef.collection('orders').doc(), data);
+                });
+                (legacyPayments || []).forEach(function(p) {
+                    const data = Object.assign({}, p);
+                    delete data.id;
+                    data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                    batch.set(studioRef.collection('payments').doc(), data);
+                });
+                batch.update(studioRef, {
+                    orders: firebase.firestore.FieldValue.delete(),
+                    payments: firebase.firestore.FieldValue.delete()
+                });
+
+                batch.commit()
+                    .then(function() { console.log('✅ Legacy orders/payments migration complete'); })
+                    .catch(function(err) {
+                        console.warn('⚠️ Legacy migration error:', err);
+                        legacyMigrationDone = false;
+                    });
+            }
+
+            // Writes the initial seed orders/payments (brand-new account only) as
+            // individual subcollection documents.
+            function seedFirebaseSubcollections(userId) {
+                if (!firebaseReady || !db) return;
+                const studioRef = db.collection('studios').doc(userId);
+                const batch = db.batch();
+                orders.forEach(function(o) {
+                    const data = Object.assign({}, o, { createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    batch.set(studioRef.collection('orders').doc(), data);
+                });
+                payments.forEach(function(p) {
+                    const data = Object.assign({}, p, { createdAt: firebase.firestore.FieldValue.serverTimestamp() });
+                    batch.set(studioRef.collection('payments').doc(), data);
+                });
+                batch.commit().catch(function(err) { console.warn('⚠️ Seed subcollection error:', err); });
+            }
+
+            // Wholesale replace of orders/payments subcollections — used only by
+            // the explicit JSON Import action, which is a deliberate "restore this
+            // backup" operation rather than a normal edit.
+            function replaceFirebaseOrdersAndPayments(userId, newOrders, newPayments) {
+                const studioRef = db.collection('studios').doc(userId);
+                return Promise.all([
+                    studioRef.collection('orders').get(),
+                    studioRef.collection('payments').get()
+                ]).then(function(results) {
+                    const batch = db.batch();
+                    results[0].docs.forEach(function(doc) { batch.delete(doc.ref); });
+                    results[1].docs.forEach(function(doc) { batch.delete(doc.ref); });
+                    (newOrders || []).forEach(function(o) {
+                        const data = Object.assign({}, o);
+                        delete data.id;
+                        data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                        batch.set(studioRef.collection('orders').doc(), data);
+                    });
+                    (newPayments || []).forEach(function(p) {
+                        const data = Object.assign({}, p);
+                        delete data.id;
+                        data.createdAt = firebase.firestore.FieldValue.serverTimestamp();
+                        batch.set(studioRef.collection('payments').doc(), data);
+                    });
+                    return batch.commit();
                 });
             }
 
@@ -1580,19 +1722,24 @@
                     if (callback) callback(false);
                     return;
                 }
+                // Orders/payments no longer live on this document — the item-level
+                // subcollection listeners (see startOrdersPaymentsSync) already keep
+                // them fresh in real time, so a manual pull just needs the shared
+                // "meta" fields plus a one-time forced re-read of the subcollections.
                 db.collection('studios').doc(userId).get({ source: 'server' })
                     .then(function(doc) {
                         if (doc.exists) {
                             const data = doc.data();
-                            if (data.orders) orders = data.orders;
                             if (data.customers) customers = data.customers;
                             if (data.customerContacts) customerContacts = data.customerContacts;
                             if (data.filaments) filaments = data.filaments;
                             if (data.templates) templates = data.templates;
-                            if (data.payments) payments = data.payments;
                             if (data.invoices) invoices = data.invoices;
                             if (data.calEvents) calEvents = data.calEvents;
                             if (data.userName) currentUserData = { name: data.userName };
+                            if (data.orders || data.payments) {
+                                migrateLegacyOrdersPayments(userId, data.orders, data.payments);
+                            }
 
                             lastSyncTime = Date.now();
                             updateSyncStatus('online', '✅ Synced to cloud');
@@ -1609,16 +1756,21 @@
                     });
             }
 
+            // Pushes only the fields that are still safe to overwrite wholesale
+            // (customers, templates, invoices, calendar, name). Orders and payments
+            // are written as individual subcollection documents at the point of
+            // change (see logOrder, addPaymentBtn, etc). Filament stock is updated
+            // with atomic FieldValue.increment() calls at the point of change too —
+            // it is deliberately NOT included here, because pushing the whole local
+            // `filaments` map would silently undo another device's concurrent
+            // increment (the exact bug this fix addresses).
             function pushDataToFirebase(userId) {
                 if (!firebaseReady || !db || !userId) return;
 
                 const data = {
-                    orders: orders,
                     customers: customers,
                     customerContacts: customerContacts,
-                    filaments: filaments,
                     templates: templates,
-                    payments: payments,
                     invoices: invoices,
                     calEvents: calEvents,
                     userName: currentUserData ? currentUserData.name : '',
@@ -1687,21 +1839,30 @@
                             .then(function(doc) {
                                 if (doc.exists) {
                                     const data = doc.data();
-                                    if (data.orders) orders = data.orders;
                                     if (data.customers) customers = data.customers;
                                     if (data.customerContacts) customerContacts = data.customerContacts;
                                     if (data.filaments) filaments = data.filaments;
                                     if (data.templates) templates = data.templates;
-                                    if (data.payments) payments = data.payments;
                                     if (data.invoices) invoices = data.invoices;
                                     if (data.calEvents) calEvents = data.calEvents;
                                     if (data.userName) currentUserData = { name: data.userName };
+                                    if (data.orders || data.payments) {
+                                        migrateLegacyOrdersPayments(user.uid, data.orders, data.payments);
+                                    }
                                     saveToLocalStorage();
                                     refreshAllUI();
                                     updateSyncStatus('online', '✅ Loaded from cloud');
                                 } else {
+                                    // Brand-new studio account: seed local defaults, then write
+                                    // the meta doc + seed orders/payments as their own documents.
                                     seedDefaultData();
                                     pushDataToFirebase(user.uid);
+                                    db.collection('studios').doc(user.uid).set({
+                                        filaments: filaments
+                                    }, { merge: true }).catch(function(err) {
+                                        console.warn('⚠️ Seed filaments error:', err);
+                                    });
+                                    seedFirebaseSubcollections(user.uid);
                                     refreshAllUI();
                                     updateSyncStatus('online', '✅ Ready');
                                 }
@@ -1725,6 +1886,15 @@
                             dbUnsubscribe();
                             dbUnsubscribe = null;
                         }
+                        if (dbUnsubscribeOrders) {
+                            dbUnsubscribeOrders();
+                            dbUnsubscribeOrders = null;
+                        }
+                        if (dbUnsubscribePayments) {
+                            dbUnsubscribePayments();
+                            dbUnsubscribePayments = null;
+                        }
+                        legacyMigrationDone = false;
                         authOverlay.classList.remove('hidden');
                         mainApp.style.display = 'none';
                         loginForm.style.display = 'block';
@@ -1870,7 +2040,14 @@
                     totalRolls = 0,
                     empty = 0;
                 for (let key in filaments) {
-                    const val = filaments[key];
+                    // Clamp display to 0: atomic increments can very rarely dip a
+                    // hair below zero if two people deduct the last of a spool at
+                    // the exact same moment — this never happens with the old
+                    // read-then-subtract approach's lost updates, but it can with
+                    // increments. It's a display-only clamp; see updateInventory's
+                    // filament-decrement handler below for why this trade-off is
+                    // worth it.
+                    const val = Math.max(0, filaments[key]);
                     totalKg += val;
                     totalRolls++;
                     if (val < 0.5) lowStock++;
@@ -1918,11 +2095,23 @@
                 document.querySelectorAll('[data-filament]').forEach(btn => {
                     btn.addEventListener('click', function() {
                         const key = this.dataset.filament;
-                        if (filaments[key] > 0) filaments[key] = Math.max(0, filaments[key] - 0.1);
-                        updateInventory();
-                        updateStats();
-                        saveToLocalStorage();
-                        if (currentUser) pushDataToFirebase(currentUser.uid);
+                        if (!(filaments[key] > 0)) return;
+                        const dec = Math.min(0.1, filaments[key]);
+                        const isOnline = !!(currentUser && firebaseReady && db);
+                        if (isOnline) {
+                            // Atomic increment instead of read-then-subtract: this is
+                            // the fix for the concurrent-edit bug where two people
+                            // deducting stock at the same time could lose one of the
+                            // deductions. Both deductions now always apply.
+                            db.collection('studios').doc(currentUser.uid).update({
+                                ['filaments.' + key]: firebase.firestore.FieldValue.increment(-dec)
+                            }).catch(function(err) { console.warn('⚠️ Stock update error:', err); });
+                        } else {
+                            filaments[key] = Math.max(0, filaments[key] - dec);
+                            updateInventory();
+                            updateStats();
+                            saveToLocalStorage();
+                        }
                     });
                 });
             }
@@ -1963,11 +2152,19 @@
                 });
                 document.querySelectorAll('[data-payidx]').forEach(btn => {
                     btn.addEventListener('click', function() {
-                        payments.splice(parseInt(this.dataset.payidx), 1);
-                        updatePayments();
-                        updateStats();
-                        saveToLocalStorage();
-                        if (currentUser) pushDataToFirebase(currentUser.uid);
+                        const idx = parseInt(this.dataset.payidx);
+                        const payment = payments[idx];
+                        const isOnline = !!(currentUser && firebaseReady && db && payment && payment.id);
+                        if (isOnline) {
+                            db.collection('studios').doc(currentUser.uid).collection('payments').doc(payment.id)
+                                .delete()
+                                .catch(function(err) { console.warn('⚠️ Payment delete error:', err); });
+                        } else {
+                            payments.splice(idx, 1);
+                            updatePayments();
+                            updateStats();
+                            saveToLocalStorage();
+                        }
                     });
                 });
 
@@ -2114,8 +2311,11 @@
                     if (t) {
                         document.getElementById('jobName').value = t.jobName || '';
                         document.getElementById('materialCost').value = t.materialCost || '';
+                        document.getElementById('filamentWeight').value = t.filamentWeight || '';
                         document.getElementById('printTime').value = t.printTime || '';
                         document.getElementById('machineDep').value = t.machineDep || '';
+                        document.getElementById('laborRate').value = t.laborRate || '2.50';
+                        document.getElementById('electricityRate').value = t.electricityRate || '0.80';
                         document.getElementById('overhead').value = t.overhead || '';
                         document.getElementById('profitMargin').value = t.profitMargin || '';
                         document.getElementById('customerSelect').value = t.customer || 'Walk-in';
@@ -2212,17 +2412,25 @@
                 const matCostPerGram = parseFloat(document.getElementById('materialCost').value) || 1.00;
                 const minutes = parseFloat(document.getElementById('printTime').value) || 0;
                 const depPerMin = parseFloat(document.getElementById('machineDep').value) || 0.25;
+                const laborRate = parseFloat(document.getElementById('laborRate').value) || 0;
+                const electricityRate = parseFloat(document.getElementById('electricityRate').value) || 0;
                 const overhead = parseFloat(document.getElementById('overhead').value) || 0;
                 const margin = parseFloat(document.getElementById('profitMargin').value) || 0;
                 const discount = parseFloat(document.getElementById('bulkDiscount').value) || 0;
 
-                const gramsUsed = minutes * 0.5;
+                // Prefer the actual filament weight from the slicer (Cura/PrusaSlicer, etc.)
+                // when the owner enters it — that's the real amount of plastic used.
+                // Fall back to the old time-based 0.5g/min estimate only when left blank,
+                // so a rough number still appears, but it's clearly a fallback, not truth.
+                const enteredGrams = document.getElementById('filamentWeight').value;
+                const usingEstimate = enteredGrams === '' || enteredGrams === null;
+                const gramsUsed = usingEstimate ? (minutes * 0.5) : (parseFloat(enteredGrams) || 0);
                 filamentUsedKg = gramsUsed / 1000;
 
                 const material = matCostPerGram * gramsUsed;
-                const labor = minutes * 2.50;
+                const labor = minutes * laborRate;
                 const machine = minutes * depPerMin;
-                const electricity = minutes * 0.80;
+                const electricity = minutes * electricityRate;
                 const totalCost = material + labor + machine + electricity + overhead;
                 const discounted = totalCost * (1 + margin / 100) * (1 - discount / 100);
                 const profit = discounted - totalCost;
@@ -2236,7 +2444,8 @@
                 document.getElementById('discountedPriceVal').textContent = '₱' + discounted.toFixed(2);
                 document.getElementById('profitVal').textContent = '₱' + profit.toFixed(2);
                 document.getElementById('profitPercentVal').textContent = profitPercent.toFixed(1) + '%';
-                document.getElementById('filamentUsedDisplay').textContent = filamentUsedKg.toFixed(3);
+                document.getElementById('filamentUsedDisplay').textContent = filamentUsedKg.toFixed(3) +
+                    (usingEstimate ? ' (estimated from time — enter slicer grams for accuracy)' : ' (from slicer)');
             }
 
             function logOrder(withDeduct) {
@@ -2257,19 +2466,48 @@
                         filamentUsed: filamentUsedKg,
                         date: new Date().toISOString().slice(0, 10)
                     };
-                    orders.push(order);
-
-                    if (withDeduct && filament && filaments[filament] !== undefined) {
-                        filaments[filament] = Math.max(0, filaments[filament] - filamentUsedKg);
-                    }
 
                     const dateKey = new Date().toISOString().slice(0, 10);
                     if (!calEvents[dateKey]) calEvents[dateKey] = [];
                     calEvents[dateKey].push(name + ' (' + filamentUsedKg.toFixed(2) + 'kg)');
 
-                    saveToLocalStorage();
-                    if (currentUser) pushDataToFirebase(currentUser.uid);
-                    refreshAllUI();
+                    const isOnline = !!(currentUser && firebaseReady && db);
+
+                    if (isOnline) {
+                        const studioRef = db.collection('studios').doc(currentUser.uid);
+
+                        // Each order is its own document — two people printing at the
+                        // same time each get their own doc instead of racing to
+                        // overwrite one shared "orders" array.
+                        const orderData = Object.assign({}, order, {
+                            createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                        });
+                        studioRef.collection('orders').add(orderData)
+                            .catch(function(err) { console.warn('⚠️ Order save error:', err); });
+
+                        if (withDeduct && filament && filaments[filament] !== undefined) {
+                            // Atomic increment — never lost even if another device
+                            // deducts the same filament at the same instant.
+                            studioRef.update({
+                                ['filaments.' + filament]: firebase.firestore.FieldValue.increment(-filamentUsedKg)
+                            }).catch(function(err) { console.warn('⚠️ Stock deduct error:', err); });
+                        }
+
+                        // Meta-only push (calendar entry) — orders/payments/filaments
+                        // are excluded from this, see pushDataToFirebase.
+                        pushDataToFirebase(currentUser.uid);
+                        // The orders/filaments listeners will refresh the UI once the
+                        // writes above land; refresh now too so the calendar entry
+                        // shows immediately without waiting on a round trip.
+                        refreshAllUI();
+                    } else {
+                        orders.push(order);
+                        if (withDeduct && filament && filaments[filament] !== undefined) {
+                            filaments[filament] = Math.max(0, filaments[filament] - filamentUsedKg);
+                        }
+                        saveToLocalStorage();
+                        refreshAllUI();
+                    }
                 }
             }
 
@@ -2328,8 +2566,11 @@
             document.getElementById('resetBtn').addEventListener('click', function() {
                 document.getElementById('jobName').value = '';
                 document.getElementById('materialCost').value = '1.00';
+                document.getElementById('filamentWeight').value = '';
                 document.getElementById('printTime').value = '';
                 document.getElementById('machineDep').value = '0.25';
+                document.getElementById('laborRate').value = '2.50';
+                document.getElementById('electricityRate').value = '0.80';
                 document.getElementById('overhead').value = '';
                 document.getElementById('profitMargin').value = '';
                 document.getElementById('filamentSelect').selectedIndex = 0;
@@ -2361,8 +2602,11 @@
                     name: name,
                     jobName: document.getElementById('jobName').value,
                     materialCost: document.getElementById('materialCost').value,
+                    filamentWeight: document.getElementById('filamentWeight').value,
                     printTime: document.getElementById('printTime').value,
                     machineDep: document.getElementById('machineDep').value,
+                    laborRate: document.getElementById('laborRate').value,
+                    electricityRate: document.getElementById('electricityRate').value,
                     overhead: document.getElementById('overhead').value,
                     profitMargin: document.getElementById('profitMargin').value,
                     customer: document.getElementById('customerSelect').value,
@@ -2378,8 +2622,11 @@
                     const t = templates[templates.length - 1];
                     document.getElementById('jobName').value = t.jobName || '';
                     document.getElementById('materialCost').value = t.materialCost || '1.00';
+                    document.getElementById('filamentWeight').value = t.filamentWeight || '';
                     document.getElementById('printTime').value = t.printTime || '';
                     document.getElementById('machineDep').value = t.machineDep || '0.25';
+                    document.getElementById('laborRate').value = t.laborRate || '2.50';
+                    document.getElementById('electricityRate').value = t.electricityRate || '0.80';
                     document.getElementById('overhead').value = t.overhead || '';
                     document.getElementById('profitMargin').value = t.profitMargin || '';
                     document.getElementById('customerSelect').value = t.customer || 'Walk-in';
@@ -2392,11 +2639,20 @@
                 const name = document.getElementById('invNewName').value.trim();
                 const qty = parseFloat(document.getElementById('invNewQty').value);
                 if (!name || isNaN(qty) || qty <= 0) return alert('Enter valid name and quantity');
-                filaments[name] = (filaments[name] || 0) + qty;
-                updateInventory();
-                updateStats();
-                saveToLocalStorage();
-                if (currentUser) pushDataToFirebase(currentUser.uid);
+                const isOnline = !!(currentUser && firebaseReady && db);
+                if (isOnline) {
+                    // Atomic increment on the dotted field path — adds a new
+                    // filament key or tops up an existing one without a
+                    // read-then-write race against anyone else's stock change.
+                    db.collection('studios').doc(currentUser.uid).update({
+                        ['filaments.' + name]: firebase.firestore.FieldValue.increment(qty)
+                    }).catch(function(err) { console.warn('⚠️ Add filament error:', err); });
+                } else {
+                    filaments[name] = (filaments[name] || 0) + qty;
+                    updateInventory();
+                    updateStats();
+                    saveToLocalStorage();
+                }
             });
 
             // Customers
@@ -2447,25 +2703,50 @@
                 const method = document.getElementById('payMethod').value;
                 const status = document.getElementById('payStatus').value;
                 if (amount <= 0) return alert('Enter a valid amount');
-                payments.push({ invoice, customer, amount, method, status });
-                updatePayments();
-                updateStats();
-                saveToLocalStorage();
-                if (currentUser) pushDataToFirebase(currentUser.uid);
+                const payment = { invoice, customer, amount, method, status };
+                const isOnline = !!(currentUser && firebaseReady && db);
+                if (isOnline) {
+                    // Its own document — adding a payment never touches (or risks
+                    // overwriting) anyone else's concurrent payment.
+                    const paymentData = Object.assign({}, payment, {
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                    db.collection('studios').doc(currentUser.uid).collection('payments').add(paymentData)
+                        .catch(function(err) { console.warn('⚠️ Payment save error:', err); });
+                } else {
+                    payments.push(payment);
+                    updatePayments();
+                    updateStats();
+                    saveToLocalStorage();
+                }
             });
 
             // History
             document.getElementById('clearHistoryBtn').addEventListener('click', function() {
                 if (confirm('Clear all order history?')) {
-                    orders = [];
                     calEvents = {};
+                    const isOnline = !!(currentUser && firebaseReady && db);
+                    if (isOnline) {
+                        // Delete every order document instead of overwriting a shared
+                        // array — a delete here can't silently erase an order someone
+                        // else added a moment ago that this client hasn't seen yet.
+                        db.collection('studios').doc(currentUser.uid).collection('orders').get()
+                            .then(function(snapshot) {
+                                const batch = db.batch();
+                                snapshot.docs.forEach(function(doc) { batch.delete(doc.ref); });
+                                return batch.commit();
+                            })
+                            .catch(function(err) { console.warn('⚠️ Clear history error:', err); });
+                        pushDataToFirebase(currentUser.uid);
+                    } else {
+                        orders = [];
+                        saveToLocalStorage();
+                    }
                     updateHistory();
                     updateStats();
                     updateDashboard();
                     updateReports();
                     renderCalendar();
-                    saveToLocalStorage();
-                    if (currentUser) pushDataToFirebase(currentUser.uid);
                 }
             });
 
@@ -2535,18 +2816,46 @@
                     reader.onload = function(ev) {
                         try {
                             const data = JSON.parse(ev.target.result);
-                            if (data.orders) orders = data.orders;
                             if (data.customers) customers = data.customers;
                             if (data.customerContacts) customerContacts = data.customerContacts;
                             if (data.filaments) filaments = data.filaments;
                             if (data.templates) templates = data.templates;
-                            if (data.payments) payments = data.payments;
                             if (data.invoices) invoices = data.invoices;
                             if (data.calEvents) calEvents = data.calEvents;
+                            orders = data.orders || [];
+                            payments = data.payments || [];
                             saveToLocalStorage();
-                            if (currentUser) pushDataToFirebase(currentUser.uid);
+
+                            const isOnline = !!(currentUser && firebaseReady && db);
+                            if (isOnline) {
+                                // Import is a deliberate "restore this backup" action, so
+                                // (unlike normal edits) it's allowed to wholesale replace
+                                // orders/payments and the filaments map.
+                                updateSyncStatus('syncing', 'Importing...');
+                                replaceFirebaseOrdersAndPayments(currentUser.uid, orders, payments)
+                                    .then(function() {
+                                        return db.collection('studios').doc(currentUser.uid).set({
+                                            customers: customers,
+                                            customerContacts: customerContacts,
+                                            filaments: filaments,
+                                            templates: templates,
+                                            invoices: invoices,
+                                            calEvents: calEvents,
+                                            userName: currentUserData ? currentUserData.name : '',
+                                            updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+                                        }, { merge: true });
+                                    })
+                                    .then(function() {
+                                        updateSyncStatus('online', '✅ Data imported');
+                                    })
+                                    .catch(function(err) {
+                                        console.warn('⚠️ Import sync error:', err);
+                                        updateSyncStatus('error', 'Import sync error: ' + err.message);
+                                    });
+                            } else {
+                                updateSyncStatus('offline', '✅ Data imported (offline)');
+                            }
                             refreshAllUI();
-                            updateSyncStatus('online', '✅ Data imported');
                         } catch (err) {
                             alert('❌ Invalid JSON file: ' + err.message);
                         }
