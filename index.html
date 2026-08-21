@@ -2222,7 +2222,7 @@
                         const key = this.dataset.filament;
                         if (!(filaments[key] > 0)) return;
                         const dec = Math.min(0.1, filaments[key]);
-                        const isOnline = !!(currentUser && firebaseReady && db);
+                        const isOnline = !!(currentUser && firebaseReady && db && activeStudioId);
                         if (isOnline) {
                             // Atomic increment instead of read-then-subtract: this is
                             // the fix for the concurrent-edit bug where two people
@@ -2230,7 +2230,10 @@
                             // deductions. Both deductions now always apply.
                             db.collection('studios').doc(activeStudioId).update({
                                 ['filaments.' + key]: firebase.firestore.FieldValue.increment(-dec)
-                            }).catch(function(err) { console.warn('⚠️ Stock update error:', err); });
+                            }).catch(function(err) {
+                                console.warn('⚠️ Stock update error:', err);
+                                alert('❌ Could not update stock: ' + err.message);
+                            });
                         } else {
                             filaments[key] = Math.max(0, filaments[key] - dec);
                             updateInventory();
@@ -2279,7 +2282,7 @@
                     btn.addEventListener('click', function() {
                         const idx = parseInt(this.dataset.payidx);
                         const payment = payments[idx];
-                        const isOnline = !!(currentUser && firebaseReady && db && payment && payment.id);
+                        const isOnline = !!(currentUser && firebaseReady && db && activeStudioId && payment && payment.id);
                         if (isOnline) {
                             db.collection('studios').doc(activeStudioId).collection('payments').doc(payment.id)
                                 .delete()
@@ -2615,7 +2618,7 @@
                     if (!calEvents[dateKey]) calEvents[dateKey] = [];
                     calEvents[dateKey].push(name + ' (' + filamentUsedKg.toFixed(2) + 'kg)');
 
-                    const isOnline = !!(currentUser && firebaseReady && db);
+                    const isOnline = !!(currentUser && firebaseReady && db && activeStudioId);
 
                     if (isOnline) {
                         const studioRef = db.collection('studios').doc(activeStudioId);
@@ -2783,14 +2786,17 @@
                 const name = document.getElementById('invNewName').value.trim();
                 const qty = parseFloat(document.getElementById('invNewQty').value);
                 if (!name || isNaN(qty) || qty <= 0) return alert('Enter valid name and quantity');
-                const isOnline = !!(currentUser && firebaseReady && db);
+                const isOnline = !!(currentUser && firebaseReady && db && activeStudioId);
                 if (isOnline) {
                     // Atomic increment on the dotted field path — adds a new
                     // filament key or tops up an existing one without a
                     // read-then-write race against anyone else's stock change.
                     db.collection('studios').doc(activeStudioId).update({
                         ['filaments.' + name]: firebase.firestore.FieldValue.increment(qty)
-                    }).catch(function(err) { console.warn('⚠️ Add filament error:', err); });
+                    }).catch(function(err) {
+                        console.warn('⚠️ Add filament error:', err);
+                        alert('❌ Could not add filament: ' + err.message);
+                    });
                 } else {
                     filaments[name] = (filaments[name] || 0) + qty;
                     updateInventory();
@@ -2848,7 +2854,7 @@
                 const status = document.getElementById('payStatus').value;
                 if (amount <= 0) return alert('Enter a valid amount');
                 const payment = { invoice, customer, amount, method, status };
-                const isOnline = !!(currentUser && firebaseReady && db);
+                const isOnline = !!(currentUser && firebaseReady && db && activeStudioId);
                 if (isOnline) {
                     // Its own document — adding a payment never touches (or risks
                     // overwriting) anyone else's concurrent payment.
@@ -2869,7 +2875,7 @@
             document.getElementById('clearHistoryBtn').addEventListener('click', function() {
                 if (confirm('Clear all order history?')) {
                     calEvents = {};
-                    const isOnline = !!(currentUser && firebaseReady && db);
+                    const isOnline = !!(currentUser && firebaseReady && db && activeStudioId);
                     if (isOnline) {
                         // Delete every order document instead of overwriting a shared
                         // array — a delete here can't silently erase an order someone
@@ -2970,7 +2976,7 @@
                             payments = data.payments || [];
                             saveToLocalStorage();
 
-                            const isOnline = !!(currentUser && firebaseReady && db);
+                            const isOnline = !!(currentUser && firebaseReady && db && activeStudioId);
                             if (isOnline) {
                                 // Import is a deliberate "restore this backup" action, so
                                 // (unlike normal edits) it's allowed to wholesale replace

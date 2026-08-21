@@ -16,7 +16,20 @@ service cloud.firestore {
 
       match /members/{memberId} {
         allow read: if isOwner(studioId) || isMember(studioId);
-        allow write: if isOwner(studioId); // only the owner adds/removes members
+        // Owner can add/remove anyone. A staff account can additionally
+        // create ONLY their own membership doc, and only when they hold a
+        // valid invite pointing at this exact studio — this is what lets
+        // ensureMembership() self-register a newly-invited staff member on
+        // their first login. Nobody but the owner can update/delete a
+        // membership doc (so staff can't change roles or remove others).
+        allow create: if isOwner(studioId) || (
+          request.auth != null &&
+          request.auth.uid == memberId &&
+          request.auth.token.email != null &&
+          exists(/databases/$(database)/documents/studioInvites/$(request.auth.token.email.lower())) &&
+          get(/databases/$(database)/documents/studioInvites/$(request.auth.token.email.lower())).data.studioId == studioId
+        );
+        allow update, delete: if isOwner(studioId);
       }
 
       match /orders/{orderId} {
