@@ -447,6 +447,46 @@
             background: #3d1f2e;
         }
 
+        /* ===== INVENTORY ROW ACTIONS (mobile-safe touch targets) ===== */
+        .inv-btn-group {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+        .btn-inv {
+            min-width: 44px;
+            min-height: 40px;
+            padding: 6px 14px;
+            font-size: 0.75rem;
+            border-radius: 8px;
+        }
+        .btn-inv-decrease {
+            background: transparent;
+            border: 1px solid #7f4b6a;
+            color: #e08ab0;
+        }
+        .btn-inv-delete {
+            background: #7a1f3d;
+            border: 1px solid #d84a7a;
+            color: #ffd6e5;
+            font-weight: 700;
+        }
+        .btn-inv-delete:hover {
+            background: #9c2850;
+        }
+        @media (max-width: 600px) {
+            .inv-btn-group {
+                flex-direction: column;
+                align-items: stretch;
+                gap: 8px;
+            }
+            .btn-inv {
+                width: 100%;
+                min-height: 44px;
+                font-size: 0.8rem;
+            }
+        }
+
         /* ===== BADGES ===== */
         .badge {
             background: #1a1f2e;
@@ -2181,7 +2221,7 @@
                     const color = key.includes('Red') ? '#e74c3c' : key.includes('Green') ? '#2ecc71' : key.includes(
                         'Neon') ? '#39ff14' : key.includes('Blue') ? '#3498db' : '#e3e6f0';
                     tr.innerHTML =
-                        `<td><span style="display:inline-block;width:14px;height:14px;background:${color};border-radius:4px;"></span></td><td>${key}</td><td>${val.toFixed(2)}</td><td><button class="btn-danger" data-filament-decrease="${key}" style="padding:2px 8px;font-size:0.65rem;" title="Remove 0.1kg">−0.1</button> <button class="btn-danger" data-filament-delete="${key}" style="padding:2px 8px;font-size:0.65rem;" title="Delete this filament entirely">✖</button></td>`;
+                        `<td><span style="display:inline-block;width:14px;height:14px;background:${color};border-radius:4px;"></span></td><td>${key}</td><td>${val.toFixed(2)}</td><td><div class="inv-btn-group"><button class="btn-inv btn-inv-decrease" data-filament-decrease="${key}" title="Remove 0.1kg">−0.1kg</button><button class="btn-inv btn-inv-delete" data-filament-delete="${key}" title="Delete this filament entirely">🗑 Delete</button></div></td>`;
                     tbody.appendChild(tr);
                 }
                 document.getElementById('invTotalKg').textContent = totalKg.toFixed(2);
@@ -2248,32 +2288,10 @@
                 // only reduces stock. Missing before: the ✖ button used to just be
                 // another −0.1 decrement, so a filament could never actually be
                 // removed from the list even once its stock hit 0.
-                //
-                // Uses a custom two-step "click again to confirm" instead of the
-                // browser's native confirm() dialog: standalone/installed PWAs
-                // (this app's manifest sets display:"standalone") and some mobile
-                // webviews silently suppress confirm()/alert() — it returns false
-                // with no dialog ever shown, which looks exactly like "the button
-                // does nothing when I click it".
                 document.querySelectorAll('[data-filament-delete]').forEach(btn => {
                     btn.addEventListener('click', function() {
                         const key = this.dataset.filamentDelete;
-
-                        if (this.dataset.confirming !== 'true') {
-                            this.dataset.confirming = 'true';
-                            const originalText = this.textContent;
-                            this.textContent = 'Sure?';
-                            this.style.background = '#ff6b6b';
-                            const btnEl = this;
-                            this._confirmTimeout = setTimeout(function() {
-                                btnEl.dataset.confirming = 'false';
-                                btnEl.textContent = originalText;
-                                btnEl.style.background = '';
-                            }, 3000);
-                            return;
-                        }
-
-                        clearTimeout(this._confirmTimeout);
+                        if (!confirm('Delete "' + key + '" from inventory entirely? This cannot be undone.')) return;
                         const isOnline = !!(currentUser && firebaseReady && db && activeStudioId);
                         if (isOnline) {
                             db.collection('studios').doc(activeStudioId).update({
