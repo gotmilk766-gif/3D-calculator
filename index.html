@@ -2248,10 +2248,32 @@
                 // only reduces stock. Missing before: the ✖ button used to just be
                 // another −0.1 decrement, so a filament could never actually be
                 // removed from the list even once its stock hit 0.
+                //
+                // Uses a custom two-step "click again to confirm" instead of the
+                // browser's native confirm() dialog: standalone/installed PWAs
+                // (this app's manifest sets display:"standalone") and some mobile
+                // webviews silently suppress confirm()/alert() — it returns false
+                // with no dialog ever shown, which looks exactly like "the button
+                // does nothing when I click it".
                 document.querySelectorAll('[data-filament-delete]').forEach(btn => {
                     btn.addEventListener('click', function() {
                         const key = this.dataset.filamentDelete;
-                        if (!confirm('Delete "' + key + '" from inventory entirely? This cannot be undone.')) return;
+
+                        if (this.dataset.confirming !== 'true') {
+                            this.dataset.confirming = 'true';
+                            const originalText = this.textContent;
+                            this.textContent = 'Sure?';
+                            this.style.background = '#ff6b6b';
+                            const btnEl = this;
+                            this._confirmTimeout = setTimeout(function() {
+                                btnEl.dataset.confirming = 'false';
+                                btnEl.textContent = originalText;
+                                btnEl.style.background = '';
+                            }, 3000);
+                            return;
+                        }
+
+                        clearTimeout(this._confirmTimeout);
                         const isOnline = !!(currentUser && firebaseReady && db && activeStudioId);
                         if (isOnline) {
                             db.collection('studios').doc(activeStudioId).update({
