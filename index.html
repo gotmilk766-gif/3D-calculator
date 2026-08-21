@@ -2181,7 +2181,7 @@
                     const color = key.includes('Red') ? '#e74c3c' : key.includes('Green') ? '#2ecc71' : key.includes(
                         'Neon') ? '#39ff14' : key.includes('Blue') ? '#3498db' : '#e3e6f0';
                     tr.innerHTML =
-                        `<td><span style="display:inline-block;width:14px;height:14px;background:${color};border-radius:4px;"></span></td><td>${key}</td><td>${val.toFixed(2)}</td><td><button class="btn-danger" data-filament="${key}" style="padding:2px 10px;font-size:0.65rem;">✖</button></td>`;
+                        `<td><span style="display:inline-block;width:14px;height:14px;background:${color};border-radius:4px;"></span></td><td>${key}</td><td>${val.toFixed(2)}</td><td><button class="btn-danger" data-filament-decrease="${key}" style="padding:2px 8px;font-size:0.65rem;" title="Remove 0.1kg">−0.1</button> <button class="btn-danger" data-filament-delete="${key}" style="padding:2px 8px;font-size:0.65rem;" title="Delete this filament entirely">✖</button></td>`;
                     tbody.appendChild(tr);
                 }
                 document.getElementById('invTotalKg').textContent = totalKg.toFixed(2);
@@ -2217,9 +2217,9 @@
                     custSel.appendChild(opt);
                 });
 
-                document.querySelectorAll('[data-filament]').forEach(btn => {
+                document.querySelectorAll('[data-filament-decrease]').forEach(btn => {
                     btn.addEventListener('click', function() {
-                        const key = this.dataset.filament;
+                        const key = this.dataset.filamentDecrease;
                         if (!(filaments[key] > 0)) return;
                         const dec = Math.min(0.1, filaments[key]);
                         const isOnline = !!(currentUser && firebaseReady && db && activeStudioId);
@@ -2236,6 +2236,32 @@
                             });
                         } else {
                             filaments[key] = Math.max(0, filaments[key] - dec);
+                            updateInventory();
+                            updateStats();
+                            saveToLocalStorage();
+                        }
+                    });
+                });
+
+                // Fully removes a filament type from the inventory list — this is
+                // the actual "delete", as opposed to the −0.1 button above which
+                // only reduces stock. Missing before: the ✖ button used to just be
+                // another −0.1 decrement, so a filament could never actually be
+                // removed from the list even once its stock hit 0.
+                document.querySelectorAll('[data-filament-delete]').forEach(btn => {
+                    btn.addEventListener('click', function() {
+                        const key = this.dataset.filamentDelete;
+                        if (!confirm('Delete "' + key + '" from inventory entirely? This cannot be undone.')) return;
+                        const isOnline = !!(currentUser && firebaseReady && db && activeStudioId);
+                        if (isOnline) {
+                            db.collection('studios').doc(activeStudioId).update({
+                                ['filaments.' + key]: firebase.firestore.FieldValue.delete()
+                            }).catch(function(err) {
+                                console.warn('⚠️ Delete filament error:', err);
+                                alert('❌ Could not delete filament: ' + err.message);
+                            });
+                        } else {
+                            delete filaments[key];
                             updateInventory();
                             updateStats();
                             saveToLocalStorage();
